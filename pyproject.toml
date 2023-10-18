@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "icx_reward"
+version = "0.1.0"
+authors = [
+    { name = "Park Eunsoo", email = "eunsoo.park@gmail.com" },
+]
+description = "Tools for ICON reward"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    'License :: OSI Approved :: Apache Software License',
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+icx-reward = "icx_reward:cli.run"
+
+[project.urls]
+"Homepage" = "https://github.com/eunsoo-icon/icx-reward"
+"Bug Tracker" = "https://github.com/eunsoo-icon/icx-reward/issues"
