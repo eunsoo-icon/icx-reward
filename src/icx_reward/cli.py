@@ -1,3 +1,4 @@
+import argparse
 import os
 from argparse import ArgumentParser
 
@@ -12,16 +13,26 @@ def environ_or_required(key):
     return {"required": True}
 
 
-def add_uri(subparser):
+def add_uri(subparser, _required: bool = True):
     subparser.add_argument("--uri", help="URI of endpoint", **environ_or_required("ICON_ENDPOINT_URI"))
 
 
-def add_address(subparser):
-    subparser.add_argument("--address", type=IconAddress(), help="address of account")
+def add_address(subparser, required: bool = True):
+    subparser.add_argument("--address", type=IconAddress(), help="address of account", required=required)
 
 
 def add_height(subparser):
     subparser.add_argument("--height", type=non_negative_num_type, default=None, help="height of block")
+
+
+def add_export_vote(subparser, required: bool = False):
+    subparser.add_argument("--export", help="export vote events to file",
+                           type=argparse.FileType('w'), default=None, required=required)
+
+
+def add_import_vote(subparser, required: bool = False):
+    subparser.add_argument("--import", help="import vote events from file",
+                           type=argparse.FileType('r'), default=None, required=required)
 
 
 parser = ArgumentParser(prog="icx-reward")
@@ -29,13 +40,14 @@ subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
 cmds = [
     ("query", "query I-Score of account", [add_uri, add_address, add_height]),
+    ("check", "check I-Score of account", [add_uri, add_address, add_height, add_export_vote, add_import_vote]),
+    ("fetch-vote", "fetch vote events of given Term", [add_uri, add_height, add_export_vote]),
     ("term", "get Term information", [add_uri, add_height]),
-    ("check", "check I-Score of account", [add_uri, add_address, add_height]),
 ]
 for cmd in cmds:
     p = subparsers.add_parser(cmd[0], help=cmd[1])
-    for func in cmd[2]:
-        func(p)
+    for add_arg_func in cmd[2]:
+        add_arg_func(p)
 
 
 def run():

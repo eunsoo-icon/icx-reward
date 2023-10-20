@@ -1,3 +1,5 @@
+import re
+
 from .constants import DATA_BYTE_ORDER
 
 DEBUG = False

@@ -11,6 +11,10 @@ class RPC:
     def __init__(self, uri: str):
         self.__sdk = IconService(HTTPProvider(uri, request_kwargs={"timeout": 120}))
 
+    @property
+    def sdk(self) -> IconService:
+        return self.__sdk
+
     def call(self,
              method: str,
              params: dict = {},
