@@ -1,8 +1,9 @@
 import json
 from functools import wraps
 
-from .rpc import RPC
-from .vote import VoteFetcher
+from icx_reward.penalty import PenaltyEventSig, PenaltyFetcher
+from icx_reward.rpc import RPC
+from icx_reward.vote import VoteFetcher
 
 
 def use_rpc(f):
@@ -52,6 +53,18 @@ def fetch_vote(args: dict, rpc: RPC):
     vf.run()
     if export_fp is not None:
         vf.export(export_fp)
+
+
+@use_rpc
+def find_penalty(args: dict, rpc: RPC):
+    resp = rpc.term(height=args.get("height", None))
+    start_height = int(resp["startBlockHeight"], 16)
+    end_height = int(resp["endBlockHeight"], 16)
+
+    pprint(f"Find penalties from {start_height} to {end_height}")
+    pf = PenaltyFetcher(rpc, args["address"], start_height, end_height)
+    pf.run()
+    pf.print_event([PenaltyEventSig.Imposed, PenaltyEventSig.Slash])
 
 
 @use_rpc

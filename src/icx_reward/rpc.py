@@ -46,3 +46,11 @@ class RPC:
             method="getPRepTerm",
             height=height,
         )
+
+    def get_prep(self, address: str, height: int = None):
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getPRep",
+            params={"address": address},
+            height=height,
+        )

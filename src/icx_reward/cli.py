@@ -2,8 +2,8 @@ import argparse
 import os
 from argparse import ArgumentParser
 
-from . import commands
-from .argparse_type import IconAddress, non_negative_num_type
+from icx_reward import commands
+from icx_reward.argparse_type import IconAddress, non_negative_num_type
 
 
 def environ_or_required(key):
@@ -41,7 +41,8 @@ subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 cmds = [
     ("query", "query I-Score of account", [add_uri, add_address, add_height]),
     ("check", "check I-Score of account", [add_uri, add_address, add_height, add_export_vote, add_import_vote]),
-    ("fetch-vote", "fetch vote events of given Term", [add_uri, add_height, add_export_vote]),
+    ("fetch-vote", "fetch vote events in given Term", [add_uri, add_height, add_export_vote]),
+    ("find-penalty", "find penalties of account in given Term", [add_uri, add_address, add_height]),
     ("term", "get Term information", [add_uri, add_height]),
 ]
 for cmd in cmds:
@@ -57,3 +58,7 @@ def run():
 
     func = getattr(commands, args["command"].replace("-", "_"))
     func(args)
+
+
+if __name__ == '__main__':
+    run()
