@@ -2,9 +2,9 @@ import hashlib
 from enum import IntEnum
 from typing import Optional
 
-from .constants import DATA_BYTE_ORDER
-from .utils import int_to_bytes, is_lowercase_hex_string
-from .exception import InvalidParamsException
+from icx_reward.constants import DATA_BYTE_ORDER
+from icx_reward.utils import int_to_bytes, is_lowercase_hex_string
+from icx_reward.exception import InvalidParamsException
 
 EOA_ADDRESS_PREFIX = "hx"
 CONTRACT_ADDRESS_PREFIX = "cx"

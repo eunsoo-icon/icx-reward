@@ -11,10 +11,10 @@ import numbers
 import operator
 from typing import TYPE_CHECKING, Iterable, Union, TypeVar
 
-from .constants import DATA_BYTE_ORDER
-from .utils import int_to_bytes
-from .address import Address
-from .exception import InvalidEventLogException
+from icx_reward.constants import DATA_BYTE_ORDER
+from icx_reward.utils import int_to_bytes
+from icx_reward.address import Address
+from icx_reward.exception import InvalidEventLogException
 
 
 def get_chunks_for_bloom(value_hash: bytes) -> Iterable[bytes]:

@@ -1,8 +1,8 @@
-import json
 from functools import wraps
 
 from icx_reward.penalty import PenaltyEventSig, PenaltyFetcher
 from icx_reward.rpc import RPC
+from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
 
 
@@ -12,13 +12,6 @@ def use_rpc(f):
         return f(args, RPC(args["uri"]))
 
     return wrapper
-
-
-def pprint(data):
-    if isinstance(data, dict):
-        print(json.dumps(data, indent=4))
-    else:
-        print(data)
 
 
 @use_rpc

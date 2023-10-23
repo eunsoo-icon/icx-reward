@@ -1,6 +1,7 @@
+import json
 import re
 
-from .constants import DATA_BYTE_ORDER
+from icx_reward.constants import DATA_BYTE_ORDER
 
 DEBUG = False
 TAB = "\t"
@@ -17,6 +18,13 @@ def tab_print(enable: bool, level: int, msg: str):
         print(msg)
     else:
         print(f"{TAB * level}[{level}] {msg}")
+
+
+def pprint(data):
+    if isinstance(data, dict):
+        print(json.dumps(data, indent=4))
+    else:
+        print(data)
 
 
 def int_to_bytes(n: int) -> bytes:
