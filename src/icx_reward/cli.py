@@ -3,7 +3,7 @@ import os
 from argparse import ArgumentParser
 
 from icx_reward import commands
-from icx_reward.argparse_type import IconAddress, non_negative_num_type
+from icx_reward.types.argparse_type import IconAddress, non_negative_num_type
 
 
 def environ_or_required(key):

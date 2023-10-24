@@ -1,4 +1,4 @@
-from icx_reward.constants import DATA_BYTE_ORDER
+from icx_reward.types.constants import DATA_BYTE_ORDER
 
 
 def rlp_encode(obj) -> bytes:

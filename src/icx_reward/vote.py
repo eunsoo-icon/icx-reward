@@ -4,20 +4,13 @@ import json
 from copy import deepcopy
 from typing import Dict, List, Optional
 
-from icx_reward.address import Address
-from icx_reward.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
-from icx_reward.constants import SYSTEM_ADDRESS
-from icx_reward.rlp import rlp_decode
 from icx_reward.rpc import RPC
-from icx_reward.utils import debug_print, bytes_to_int
-
-REVISION = 24
-IISS_VERSION = 4
-
-UNBOND_HEIGHT = "UNBOND_HEIGHT"
-TERM_INFO = "TERM_INFO"
-VOTE_INFOS = "VOTE_INFOS"
-BONDER_LIST = "BONDER_LIST"
+from icx_reward.types.address import Address
+from icx_reward.types.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
+from icx_reward.types.constants import SYSTEM_ADDRESS
+from icx_reward.types.rlp import rlp_decode
+from icx_reward.types.utils import bytes_to_int
+from icx_reward.utils import debug_print
 
 SCORE_ADDRESS = get_score_address_bloom_data(Address.from_string(SYSTEM_ADDRESS))
 SET_BOND_SIG = "SetBond(Address,bytes)"

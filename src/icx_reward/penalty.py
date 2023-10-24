@@ -1,31 +1,16 @@
-from enum import auto, IntFlag
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from icx_reward.constants import SYSTEM_ADDRESS
+from iconsdk.exception import JSONRPCException
+
+from icx_reward.types.constants import SYSTEM_ADDRESS
+from icx_reward.types.exception import InvalidParamsException
+from icx_reward.types.prep import Penalty
 from icx_reward.rpc import RPC
 
 
 class PenaltyEventSig:
     Imposed = "PenaltyImposed(Address,int,int)"
     Slash = "Slashed(Address,Address,int)"
-
-
-class Penalty(IntFlag):
-    """
-    Enumerate of PRep penalty
-    """
-    PrepDisqualification = 2
-    AccumulatedValidationFailure = auto()
-    ValidationFailure = auto()
-    MissedNetworkProposalVote = auto()
-    DoubleSign = auto()
-
-    def __str__(self) -> str:
-        return repr(self)
-
-    @staticmethod
-    def from_string(penalty: str):
-        return Penalty(int(penalty, 16))
 
 
 class PenaltyFetcher:
@@ -35,6 +20,8 @@ class PenaltyFetcher:
         self.__start_height = start_height
         self.__end_height = end_height
         self.__penalties: Dict[int, Penalty] = {}
+        if not self.is_prep(self.__end_height):
+            raise InvalidParamsException(f"{self.__address} is not P-Rep")
 
     @property
     def address(self):
@@ -43,6 +30,17 @@ class PenaltyFetcher:
     @property
     def penalties(self) -> Dict[int, Penalty]:
         return self.__penalties
+
+    def get_prep(self, height: int) -> Optional[dict]:
+        try:
+            resp = self.__rpc.get_prep(self.__address, height)
+        except JSONRPCException:
+            return None
+        else:
+            return resp
+
+    def is_prep(self, height: int) -> bool:
+        return self.get_prep(height) is not None
 
     def get_penalty(self, height: int) -> Penalty:
         return Penalty.from_string(self.__rpc.get_prep(self.__address, height)["penalty"])
@@ -62,7 +60,7 @@ class PenaltyFetcher:
             if cur_penalty != penalty:
                 prev_penalty = self.get_penalty(mid - 1)
                 if cur_penalty == prev_penalty:
-                    # mid is slashing height
+                    # mid-1 is penalty height
                     self.__penalties[mid-1] = ~cur_penalty & penalty
                     if target_penalty == penalty:
                         break

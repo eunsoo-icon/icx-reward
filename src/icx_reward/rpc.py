@@ -4,7 +4,7 @@ from iconsdk.builder.call_builder import CallBuilder
 from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
 
-from icx_reward.constants import SYSTEM_ADDRESS
+from icx_reward.types.constants import SYSTEM_ADDRESS
 
 
 class RPC:
