@@ -46,6 +46,8 @@ def fetch_vote(args: dict, rpc: RPC):
     vf.run()
     if export_fp is not None:
         vf.export(export_fp)
+    else:
+        vf.print_result()
 
 
 @use_rpc
