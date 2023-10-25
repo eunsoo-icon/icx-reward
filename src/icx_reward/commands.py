@@ -1,7 +1,9 @@
 from functools import wraps
 
-from icx_reward.penalty import PenaltyEventSig, PenaltyFetcher
+from icx_reward.penalty import PenaltyFetcher
 from icx_reward.rpc import RPC
+from icx_reward.types.event import EventSig
+from icx_reward.types.exception import InvalidParamsException
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
 
@@ -32,9 +34,7 @@ def term(args: dict, rpc: RPC):
 @use_rpc
 def fetch_vote(args: dict, rpc: RPC):
     export_fp = args.get("export")
-    resp = rpc.term(height=args.get("height", None))
-    start_height = int(resp["startBlockHeight"], 16)
-    end_height = int(resp["endBlockHeight"], 16)
+    resp, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
     iiss_version = int(resp["iissVersion"], 16)
 
     if iiss_version < 4:
@@ -52,17 +52,30 @@ def fetch_vote(args: dict, rpc: RPC):
 
 @use_rpc
 def find_penalty(args: dict, rpc: RPC):
-    resp = rpc.term(height=args.get("height", None))
-    start_height = int(resp["startBlockHeight"], 16)
-    end_height = int(resp["endBlockHeight"], 16)
+    _, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
+    address = args["address"]
 
-    pprint(f"Find penalties from {start_height} to {end_height}")
-    pf = PenaltyFetcher(rpc, args["address"], start_height, end_height)
+    pprint(f"Find penalties of {address} from {start_height} to {end_height}")
+    try:
+        pf = PenaltyFetcher(rpc, address, start_height, end_height)
+    except InvalidParamsException as e:
+        pprint(f"{e}")
+        return
     pf.run()
-    pf.print_event([PenaltyEventSig.Imposed, PenaltyEventSig.Slash])
+    pf.print_event([EventSig.Penalty, EventSig.Slash])
 
 
 @use_rpc
 def check(args: dict, rpc: RPC):
     # TODO
     pass
+
+
+def get_term_height(rpc: RPC, height: int = None) -> (dict, int, int):
+    resp = rpc.term(height)
+    start_height = int(resp["startBlockHeight"], 16)
+    end_height = int(resp["endBlockHeight"], 16)
+    last_height = rpc.sdk.get_block("latest")["height"]
+    if last_height < end_height:
+        end_height = last_height
+    return resp, start_height, end_height

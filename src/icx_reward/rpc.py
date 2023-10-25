@@ -5,6 +5,7 @@ from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
 
 from icx_reward.types.constants import SYSTEM_ADDRESS
+from icx_reward.types.prep import PRep
 
 
 class RPC:
@@ -47,10 +48,30 @@ class RPC:
             height=height,
         )
 
-    def get_prep(self, address: str, height: int = None):
-        return self.call(
+    def get_prep(self, address: str, height: int = None, to_obj: bool = False) -> Union[dict, PRep]:
+        resp = self.call(
             to=SYSTEM_ADDRESS,
             method="getPRep",
+            params={"address": address},
+            height=height,
+        )
+        if to_obj:
+            return PRep.from_dict(resp)
+        else:
+            return resp
+
+    def get_bond(self, address: str, height: int = None):
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getBond",
+            params={"address": address},
+            height=height,
+        )
+
+    def get_delegation(self, address: str, height: int = None):
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getDelegation",
             params={"address": address},
             height=height,
         )

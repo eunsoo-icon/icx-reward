@@ -4,13 +4,8 @@ from iconsdk.exception import JSONRPCException
 
 from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.exception import InvalidParamsException
-from icx_reward.types.prep import Penalty
+from icx_reward.types.prep import Penalty, PRep
 from icx_reward.rpc import RPC
-
-
-class PenaltyEventSig:
-    Imposed = "PenaltyImposed(Address,int,int)"
-    Slash = "Slashed(Address,Address,int)"
 
 
 class PenaltyFetcher:
@@ -20,7 +15,7 @@ class PenaltyFetcher:
         self.__start_height = start_height
         self.__end_height = end_height
         self.__penalties: Dict[int, Penalty] = {}
-        if not self.is_prep(self.__end_height):
+        if not self._is_prep(self.__end_height):
             raise InvalidParamsException(f"{self.__address} is not P-Rep")
 
     @property
@@ -31,24 +26,24 @@ class PenaltyFetcher:
     def penalties(self) -> Dict[int, Penalty]:
         return self.__penalties
 
-    def get_prep(self, height: int) -> Optional[dict]:
+    def _get_prep(self, height: int) -> Optional[PRep]:
         try:
-            resp = self.__rpc.get_prep(self.__address, height)
+            prep = self.__rpc.get_prep(self.__address, height, to_obj=True)
         except JSONRPCException:
             return None
         else:
-            return resp
+            return prep
 
-    def is_prep(self, height: int) -> bool:
-        return self.get_prep(height) is not None
+    def _is_prep(self, height: int) -> bool:
+        return self._get_prep(height) is not None
 
-    def get_penalty(self, height: int) -> Penalty:
-        return Penalty.from_string(self.__rpc.get_prep(self.__address, height)["penalty"])
+    def _get_penalty(self, height: int) -> Penalty:
+        return self._get_prep(height).penalty
 
     def run(self):
         low, high = self.__start_height, self.__end_height
-        cur_penalty = self.get_penalty(low)
-        target_penalty = self.get_penalty(high)
+        cur_penalty = self._get_penalty(low)
+        target_penalty = self._get_penalty(high)
 
         if cur_penalty == target_penalty:
             return
@@ -56,9 +51,9 @@ class PenaltyFetcher:
         # find slashing heights
         while low <= high:
             mid = (low + high) // 2
-            penalty = self.get_penalty(mid)
+            penalty = self._get_penalty(mid)
             if cur_penalty != penalty:
-                prev_penalty = self.get_penalty(mid - 1)
+                prev_penalty = self._get_penalty(mid - 1)
                 if cur_penalty == prev_penalty:
                     # mid-1 is penalty height
                     self.__penalties[mid-1] = ~cur_penalty & penalty
