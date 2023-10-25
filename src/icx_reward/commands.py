@@ -62,7 +62,7 @@ def find_penalty(args: dict, rpc: RPC):
         pprint(f"{e}")
         return
     pf.run()
-    pf.print_event([EventSig.Penalty, EventSig.Slash])
+    pf.print_result()
 
 
 @use_rpc

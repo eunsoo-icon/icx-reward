@@ -37,7 +37,7 @@ class Grade(IntEnum):
         return Grade(int(grade, 16))
 
 
-class Penalty(IntFlag):
+class PenaltyFlag(IntFlag):
     """
     Enumerate of PRep penalty
     """
@@ -52,7 +52,7 @@ class Penalty(IntFlag):
 
     @staticmethod
     def from_string(penalty: str):
-        return Penalty(int(penalty, 16))
+        return PenaltyFlag(int(penalty, 16))
 
 
 class JailFlags(IntFlag):
@@ -157,7 +157,7 @@ class PRep(PRepSummary):
     """PRep class
     """
 
-    def __init__(self, status: Status, grade: Grade, penalty: Penalty, jail_info: JailInfo, has_pub_key: bool,
+    def __init__(self, status: Status, grade: Grade, penalty: PenaltyFlag, jail_info: JailInfo, has_pub_key: bool,
                  bonded: str, last_height: str,
                  commission_rate: str, max_commission_rate: str, max_commission_change_rate: str,
                  name: str, address: str, delegated: str, power: str):
@@ -190,7 +190,7 @@ class PRep(PRepSummary):
         return self._grade
 
     @property
-    def penalty(self) -> Penalty:
+    def penalty(self) -> PenaltyFlag:
         return self._penalty
 
     @property
@@ -235,7 +235,7 @@ class PRep(PRepSummary):
         return PRep(
             status=Status.from_string(values.get("status", "0x0")),
             grade=Grade.from_string(values.get("grade", "0x0")),
-            penalty=Penalty.from_string(values.get("penalty", "0x0")),
+            penalty=PenaltyFlag.from_string(values.get("penalty", "0x0")),
             has_pub_key=True if values.get("hashPublicKey", "0x1") == "0x1" else False,
             jail_info=JailInfo.from_dict(values),
             bonded=values.get("bonded"),

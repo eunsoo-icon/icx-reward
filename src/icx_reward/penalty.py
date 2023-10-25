@@ -3,9 +3,22 @@ from typing import Dict, List, Optional
 from iconsdk.exception import JSONRPCException
 
 from icx_reward.types.constants import SYSTEM_ADDRESS
+from icx_reward.types.event import EventSig
 from icx_reward.types.exception import InvalidParamsException
-from icx_reward.types.prep import Penalty, PRep
+from icx_reward.types.prep import PenaltyFlag, PRep
 from icx_reward.rpc import RPC
+
+
+class Penalty:
+    def __init__(self, height: int, flag: PenaltyFlag, events: List[Dict]):
+        self.__height = height
+        self.__flag = flag
+        self.__events = events
+
+    def print(self):
+        print(f"At block height {self.__height}: {self.__flag}")
+        for e in self.__events:
+            print(f"\t{e}")
 
 
 class PenaltyFetcher:
@@ -37,26 +50,26 @@ class PenaltyFetcher:
     def _is_prep(self, height: int) -> bool:
         return self._get_prep(height) is not None
 
-    def _get_penalty(self, height: int) -> Penalty:
+    def _get_penalty_flag(self, height: int) -> PenaltyFlag:
         return self._get_prep(height).penalty
 
     def run(self):
         low, high = self.__start_height, self.__end_height
-        cur_penalty = self._get_penalty(low)
-        target_penalty = self._get_penalty(high)
+        cur_penalty = self._get_penalty_flag(low)
+        target_penalty = self._get_penalty_flag(high)
 
         if cur_penalty == target_penalty:
             return
 
-        # find slashing heights
+        # find penalties
         while low <= high:
             mid = (low + high) // 2
-            penalty = self._get_penalty(mid)
+            penalty = self._get_penalty_flag(mid)
             if cur_penalty != penalty:
-                prev_penalty = self._get_penalty(mid - 1)
+                prev_penalty = self._get_penalty_flag(mid - 1)
                 if cur_penalty == prev_penalty:
                     # mid-1 is penalty height
-                    self.__penalties[mid-1] = ~cur_penalty & penalty
+                    self._add_penalty(mid - 1, ~cur_penalty & penalty)
                     if target_penalty == penalty:
                         break
                     # find again from mid
@@ -69,22 +82,25 @@ class PenaltyFetcher:
             else:
                 low = mid + 1
 
-    def get_event(self, signatures: List[str]) -> Dict[int, List]:
-        result = {}
-        for height in self.__penalties.keys():
-            events = []
-            block = self.__rpc.sdk.get_block(height)
-            tx_result = self.__rpc.sdk.get_transaction_result(block["confirmed_transaction_list"][0]["txHash"])
-            for event in tx_result["eventLogs"]:
-                indexed = event["indexed"]
-                if event["scoreAddress"] == SYSTEM_ADDRESS and indexed[0] in signatures and indexed[1] == self.__address:
-                    events.append(event)
-            result[height] = events
-        return result
+    def _add_penalty(self, height, flag: PenaltyFlag):
+        self.__penalties[height] = Penalty(
+            height=height,
+            flag=flag,
+            events=self._get_events(self.__rpc, height, self.__address, [EventSig.Penalty, EventSig.Slash]),
+        )
 
-    def print_event(self, signatures: List[str]):
-        result = self.get_event(signatures)
-        for height, events in result.items():
-            print(f"At block height {height}: {self.__penalties[height]}")
-            for e in events:
-                print(f"\t{e}")
+    @staticmethod
+    def _get_events(rpc: RPC, height: int, address: str, signatures: List[str]) -> List[dict]:
+        events = []
+        block = rpc.sdk.get_block(height)
+        tx_result = rpc.sdk.get_transaction_result(block["confirmed_transaction_list"][0]["txHash"])
+        for event in tx_result["eventLogs"]:
+            indexed = event["indexed"]
+            if event["scoreAddress"] == SYSTEM_ADDRESS and indexed[0] in signatures and indexed[1] == address:
+                events.append(event)
+        return events
+
+    def print_result(self):
+        print(f"## Penalties of {self.__address}")
+        for pi in self.__penalties.values():
+            pi.print()
