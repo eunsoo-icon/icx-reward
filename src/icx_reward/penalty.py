@@ -15,6 +15,15 @@ class Penalty:
         self.__flag = flag
         self.__events = events
 
+    def accumulated_slash_amount(self, end_height: int, bonder_address: str = None) -> int:
+        amount = 0
+        period = end_height - self.__height
+        for event in self.__events:
+            if event["indexed"][0] == EventSig.Slash and len(event["data"]) == 2:
+                if bonder_address is None or event["data"][0] == bonder_address:
+                    amount += int(event["data"][1], 16) * period
+        return amount
+
     def print(self):
         print(f"At block height {self.__height}: {self.__flag}")
         for e in self.__events:
