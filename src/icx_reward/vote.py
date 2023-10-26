@@ -9,6 +9,7 @@ from icx_reward.types.address import Address
 from icx_reward.types.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
 from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.event import EventSig
+from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.rlp import rlp_decode
 from icx_reward.types.utils import bytes_to_int
 from icx_reward.utils import debug_print, pprint, print_progress
@@ -21,24 +22,24 @@ class Vote:
     TYPE_BOND = 0
     TYPE_DELEGATE = 1
 
-    def __init__(self, owner: Address, _type: int, offset: int = 0, data: List[Dict] = []):
+    def __init__(self, owner: str, _type: int, offset: int = 0, data: List[Dict] = []):
         self.__owner = owner
         self.__type = _type
         self.__offset = offset
         self.values: Dict[str, int] = {}
         for d in data:
-            self.values[d["address"]] = d["value"]
+            self.values[d["address"]] = d["value"] if isinstance(d["value"], int) else int(d["value"], 16)
 
-    def __str__(self):
-        return f"Vote{self.__dict__}"
+    def __repr__(self):
+        return f"Vote('owner': '{self.__owner}', 'type': {self.__type}, 'offset': {self.__offset}, 'values': {self.values})"
 
     def __deepcopy__(self, memodict={}):
-        copy = Vote(_type=self.__type, offset=self.__offset)
+        copy = Vote(owner=self.__owner, _type=self.__type, offset=self.__offset)
         copy.values = deepcopy(self.values)
         return copy
 
     @property
-    def owner(self) -> Address:
+    def owner(self) -> str:
         return self.__owner
 
     @property
@@ -53,22 +54,17 @@ class Vote:
     def offset(self, offset: int):
         self.__offset = offset
 
-    def diff(self, vote: Vote) -> Vote:
+    def diff(self, prev: Vote) -> Vote:
         diff = deepcopy(self)
-        if vote is None:
+        if prev is None:
             return diff
-        for k, v in vote.values.items():
+        for k, v in prev.values.items():
             diff.values[k] = diff.values.get(k, 0) - v
         return diff
 
-    def merge(self, vote: Vote) -> None:
-        self.__offset = vote.__offset
-        for k, v in vote.values.items():
-            self.values[k] = self.values.get(k, 0) + v
-
     def to_dict(self) -> dict:
         return {
-            "owner": str(self.__owner),
+            "owner": self.__owner,
             "type": self.__type,
             "offset": self.__offset,
             "vote": self.values
@@ -97,7 +93,7 @@ class Vote:
             data.append({"address": str(Address.from_bytes(v[0])), "value": v[1]})
 
         return Vote(
-            owner=Address.from_string(voter),
+            owner=voter,
             _type=Vote.TYPE_BOND if sig == EventSig.SetBond else Vote.TYPE_DELEGATE,
             offset=offset,
             data=data,
@@ -126,16 +122,18 @@ class Vote:
         return Vote.from_block_tx(tx, tx["blockHeight"] - start_height)
 
     @staticmethod
-    def from_get_bond(value: dict) -> Vote:
+    def from_get_bond(owner: str, value: dict) -> Vote:
         return Vote(
+            owner=owner,
             _type=Vote.TYPE_BOND,
             offset=-1,
             data=value["bonds"],
         )
 
     @staticmethod
-    def from_get_delegation(value: dict) -> Vote:
+    def from_get_delegation(owner: str, value: dict) -> Vote:
         return Vote(
+            owner=owner,
             _type=Vote.TYPE_DELEGATE,
             offset=-1,
             data=value["delegations"],
@@ -143,9 +141,17 @@ class Vote:
 
 
 class Votes:
-    def __init__(self):
+    def __init__(self, owner: str):
+        self.__owner = owner
         self.__bonds: List[Vote] = []
         self.__delegations: List[Vote] = []
+
+    def __repr__(self):
+        return f"Votes('owner': '{self.__owner}', 'bonds': {self.__bonds}, 'delegations': {self.__delegations})"
+
+    @property
+    def owner(self) -> str:
+        return self.__owner
 
     @property
     def bonds(self) -> List[Vote]:
@@ -161,6 +167,26 @@ class Votes:
         else:
             self.__delegations.append(vote)
 
+    def _vote_values_for_prep(self, rpc: RPC, votes: List[Vote], prep: str, start_height: int, offset_limit: int) -> int:
+        if len(votes) == 0:
+            return 0
+        if votes[0].type == Vote.TYPE_BOND:
+            prev = Vote.from_get_bond(self.__owner, rpc.get_bond(self.__owner, start_height))
+        else:
+            prev = Vote.from_get_delegation(self.__owner, rpc.get_delegation(self.__owner, start_height))
+        accum_value = 0
+        for vote in votes:
+            diff = vote.diff(prev)
+            period = offset_limit - diff.offset
+            if prep in diff.values.keys():
+                accum_value += period * diff.values[prep]
+            prev = vote
+        return accum_value
+
+    def accumulated_values_for_prep(self, rpc: RPC, prep: str, start_height: int, offset_limit: int) -> (int, int):
+        return (self._vote_values_for_prep(rpc, self.__bonds, prep, start_height, offset_limit),
+                self._vote_values_for_prep(rpc, self.__delegations, prep, start_height, offset_limit))
+
     def to_dict(self) -> dict:
         return {
             "bonds": [x.to_dict() for x in self.__bonds],
@@ -168,8 +194,8 @@ class Votes:
         }
 
     @staticmethod
-    def from_dict(value: dict) -> Votes:
-        votes = Votes()
+    def from_dict(owner: str, value: dict) -> Votes:
+        votes = Votes(owner)
         for d in value["bonds"] + value["delegations"]:
             votes.append_vote(Vote.from_dict(d))
         return votes
@@ -184,9 +210,15 @@ class VoteFetcher:
         if import_fp is not None:
             self._load_from_fp(import_fp)
 
+    def __repr__(self):
+        return f"VoteFetcher('startHeight': {self.__start_height}, 'endHeight': {self.__end_height}, 'votes': {self.__votes}"
+
     @property
     def votes(self) -> Dict[str, Votes]:
         return self.__votes
+
+    def vote_of(self, addr: str):
+        return self.__votes[addr]
 
     def _print_progress(self, height: int):
         print_progress(
@@ -197,14 +229,16 @@ class VoteFetcher:
         )
 
     def _load_from_fp(self, fp):
+        print(f">> Load votes from {self.__start_height} to {self.__end_height}")
         data = json.load(fp)
-        self.__start_height = data["startHeight"]
-        self.__end_height = data["endHeight"]
+        if self.__start_height != data["startHeight"] or self.__end_height != data["endHeight"]:
+            raise InvalidParamsException("Invalid import vote file. check startHeight and endHeight")
+
         for addr, votes in data["votes"].items():
-            self.__votes[addr] = Votes.from_dict(votes)
-        print(f"{self.__votes.items()}")
+            self.__votes[addr] = Votes.from_dict(addr, votes)
 
     def run(self):
+        print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
         height = self.__start_height
         while height <= self.__end_height:
             self._print_progress(height)
@@ -219,11 +253,11 @@ class VoteFetcher:
 
     def update_votes(self, votes: List[Vote]):
         for vote in votes:
-            key = str(vote.owner)
+            key = vote.owner
             if key in self.__votes.keys():
                 self.__votes[key].append_vote(vote)
             else:
-                votes = Votes()
+                votes = Votes(owner=key)
                 votes.append_vote(vote)
                 self.__votes[key] = votes
 

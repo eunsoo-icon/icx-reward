@@ -2,7 +2,7 @@ from functools import wraps
 
 from icx_reward.penalty import PenaltyFetcher
 from icx_reward.rpc import RPC
-from icx_reward.types.event import EventSig
+from icx_reward.reward import PRepCalculator, Voter
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
@@ -41,10 +41,10 @@ def fetch_vote(args: dict, rpc: RPC):
         pprint("Can't fetch vote. Support IISS 4 only.")
         return
 
-    pprint(f"Fetch votes from {start_height} to {end_height}")
     vf = VoteFetcher(rpc, start_height, end_height)
     vf.run()
     if export_fp is not None:
+        print(f"## Export result to {export_fp.name}")
         vf.export(export_fp)
     else:
         vf.print_result()
@@ -67,8 +67,51 @@ def find_penalty(args: dict, rpc: RPC):
 
 @use_rpc
 def check(args: dict, rpc: RPC):
-    # TODO
-    pass
+    address = args["address"]
+    import_fp = args["import"]
+    height = args["height"]
+    term, start_height, end_height = get_term_height(rpc, height=height)
+    iiss_version = int(term["iissVersion"], 16)
+    if iiss_version < 4:
+        pprint("Can't fetch vote. Support IISS 4 only.")
+        return
+    period = int(term["period"], 16)
+    event_start_height = start_height - 2 * period
+    event_end_height = end_height - 2 * period
+
+    print(f"## Check reward of {address} at height {height}\n")
+
+    # get all vote events
+    vf = VoteFetcher(rpc, event_start_height, event_end_height, import_fp)
+    if import_fp is None:
+        vf.run()
+    votes = vf.votes
+
+    print()
+
+    # prep reward
+    pc = PRepCalculator.from_term(rpc.term(event_start_height))
+    pc.run(rpc, votes)
+
+    print()
+
+    # voter reward
+    voter = Voter(address, votes.get(address, None), pc.start_height, pc.offset_limit(), pc.preps)
+    voter.update_accumulated_vote()
+    voter.calculate()
+
+    reward = pc.get_prep_reward(address) + voter.reward
+
+    print(f"\n## Calculated reward: PRep + Voter = {pc.get_prep_reward(address)} + {voter.reward} = {reward}")
+
+    # query iscore from network
+    iscore = (int(rpc.query_iscore(address, start_height + 1).get("iscore", "0x0"), 16)
+              - int(rpc.query_iscore(address, start_height).get("iscore", "0x0"), 16))
+
+    print(f"\n## Queried I-Score: {iscore}")
+
+    if reward != iscore:
+        print(f"!!!!! ERROR: Calculated and queried reward are not same. {reward} != {iscore}")
 
 
 def get_term_height(rpc: RPC, height: int = None) -> (dict, int, int):
