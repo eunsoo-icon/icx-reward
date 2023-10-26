@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.scripts]
-icx-reward = "icx_reward:cli.run"
+icx-reward = "icx_reward:cli"
 
 [project.urls]
 "Homepage" = "https://github.com/eunsoo-icon/icx-reward"
