@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from copy import deepcopy
 from typing import Dict, List, Optional
 
@@ -12,7 +13,7 @@ from icx_reward.types.event import EventSig
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.rlp import rlp_decode
 from icx_reward.types.utils import bytes_to_int
-from icx_reward.utils import debug_print, pprint, print_progress
+from icx_reward.utils import pprint, print_progress
 
 SYSTEM_ADDRESS_BF_DATA = get_score_address_bloom_data(Address.from_string(SYSTEM_ADDRESS))
 VOTE_SIG_BF_DATA = [get_bloom_data(0, x) for x in EventSig.VOTE_SIG_LIST]
@@ -113,7 +114,6 @@ class Vote:
                 offset=offset,
                 data=tx["data"]["params"][votes],
             )
-            debug_print(-1, f"Vote.from_tx() {vote} from {tx['txHash']}")
             return vote
         return None
 
@@ -202,13 +202,14 @@ class Votes:
 
 
 class VoteFetcher:
-    def __init__(self, rpc: RPC, start_height: int, end_height: int, import_fp=None):
+    def __init__(self, rpc: RPC, start_height: int, end_height: int, import_fp=None, file=None):
         self.__rpc = rpc
         self.__start_height = start_height
         self.__end_height = end_height
         self.__votes: Dict[str, Votes] = {}
         if import_fp is not None:
-            self._load_from_fp(import_fp)
+            self._import(import_fp)
+        self.__file = file
 
     def __repr__(self):
         return f"VoteFetcher('startHeight': {self.__start_height}, 'endHeight': {self.__end_height}, 'votes': {self.__votes}"
@@ -220,16 +221,8 @@ class VoteFetcher:
     def vote_of(self, addr: str):
         return self.__votes[addr]
 
-    def _print_progress(self, height: int):
-        print_progress(
-            iteration=height - self.__start_height,
-            total=self.__end_height - self.__start_height,
-            prefix="Progress", suffix="Complete",
-            decimals=1, bar_length=50,
-        )
-
-    def _load_from_fp(self, fp):
-        print(f">> Load votes from {self.__start_height} to {self.__end_height}")
+    def _import(self, fp):
+        self._print(f">> Import votes from file {fp.name}")
         data = json.load(fp)
         if self.__start_height != data["startHeight"] or self.__end_height != data["endHeight"]:
             raise InvalidParamsException("Invalid import vote file. check startHeight and endHeight")
@@ -238,7 +231,7 @@ class VoteFetcher:
             self.__votes[addr] = Votes.from_dict(addr, votes)
 
     def run(self):
-        print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
+        self._print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
         height = self.__start_height
         while height <= self.__end_height:
             self._print_progress(height)
@@ -265,7 +258,7 @@ class VoteFetcher:
         json.dump(fp=fp, obj=self.to_dict(), indent=2)
 
     def print_result(self):
-        pprint(self.to_dict())
+        pprint(self.to_dict(), file=self.__file)
 
     def to_dict(self):
         votes = {}
@@ -307,3 +300,17 @@ class VoteFetcher:
             votes.append(vote)
 
         return votes
+
+    def _print(self, msg):
+        if self.__file is not None:
+            print(msg, file=self.__file)
+
+    def _print_progress(self, height: int):
+        if self.__file is None or self.__file != sys.stdout:
+            return
+        print_progress(
+            iteration=height - self.__start_height,
+            total=self.__end_height - self.__start_height,
+            prefix="Progress", suffix="Complete",
+            decimals=1, bar_length=50,
+        )

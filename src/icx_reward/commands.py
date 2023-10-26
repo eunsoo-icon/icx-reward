@@ -1,3 +1,4 @@
+import sys
 from functools import wraps
 
 from icx_reward.penalty import PenaltyFetcher
@@ -41,7 +42,7 @@ def fetch_vote(args: dict, rpc: RPC):
         pprint("Can't fetch vote. Support IISS 4 only.")
         return
 
-    vf = VoteFetcher(rpc, start_height, end_height)
+    vf = VoteFetcher(rpc, start_height, end_height, file=sys.stdout)
     vf.run()
     if export_fp is not None:
         print(f"## Export result to {export_fp.name}")
@@ -82,7 +83,7 @@ def check(args: dict, rpc: RPC):
     print(f"## Check reward of {address} at height {height}\n")
 
     # get all vote events
-    vf = VoteFetcher(rpc, event_start_height, event_end_height, import_fp)
+    vf = VoteFetcher(rpc, event_start_height, event_end_height, import_fp, file=sys.stdout)
     if import_fp is None:
         vf.run()
     votes = vf.votes
@@ -91,12 +92,13 @@ def check(args: dict, rpc: RPC):
 
     # prep reward
     pc = PRepCalculator.from_term(rpc.term(event_start_height))
+    pc.set_file(sys.stdout)
     pc.run(rpc, votes)
 
     print()
 
     # voter reward
-    voter = Voter(address, votes.get(address, None), pc.start_height, pc.offset_limit(), pc.preps)
+    voter = Voter(address, votes.get(address, None), pc.start_height, pc.offset_limit(), pc.preps, sys.stdout)
     voter.update_accumulated_vote()
     voter.calculate()
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import sys
 from typing import Dict, List, Optional
 
 from icx_reward.penalty import Penalty, PenaltyFetcher
 from icx_reward.rpc import RPC
 from icx_reward.types.constants import ICX_TO_ISCORE_RATE, MONTH_BLOCK, RATE_DENOM
 from icx_reward.types.prep import JailInfo, PRep as PRepResp
-from icx_reward.utils import debug_print, tab_print
 from icx_reward.vote import Vote, Votes
 
 
@@ -116,7 +116,8 @@ class PRep:
 
 
 class Voter:
-    def __init__(self, address: str, votes: Votes, start_height: int, offset_limit: int, preps: Dict[str, PRep]):
+    def __init__(self, address: str, votes: Votes, start_height: int, offset_limit: int, preps: Dict[str, PRep],
+                 file=None):
         self.__address = address
         self.__votes = votes
         self.__start_height = start_height
@@ -125,7 +126,8 @@ class Voter:
 
         self.__accum_vote: Dict[str, int] = {}
         self.__reward = 0
-        self.__report = False
+
+        self.__file = file
 
     @property
     def address(self) -> str:
@@ -169,7 +171,8 @@ class Voter:
         self._update_accumulated_vote_with_slash()
 
     def calculate(self):
-        self._print(f">> Voter reward of {self.__address} = sum(prep.voter_reward * voter.accum_vote(prep) // prep.accum_voted)")
+        self._print(
+            f">> Calculate Voter reward of {self.__address} = sum(prep.voter_reward * voter.accum_vote(prep) // prep.accum_voted)")
         for addr, value in self.__accum_vote.items():
             prep = self.__preps.get(addr, None)
             if prep is None:
@@ -180,7 +183,8 @@ class Voter:
             self.__reward += reward
 
     def _print(self, msg: str):
-        print(msg)
+        if self.__file is not None:
+            print(msg, file=self.__file)
 
 
 class PRepCalculator:
@@ -196,6 +200,8 @@ class PRepCalculator:
         self.__total_prep_reward: int = self._reward_iscore_of_term(iglobal, iprep, self.period())
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
+
+        self.__file = None
 
     @staticmethod
     def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
@@ -240,6 +246,9 @@ class PRepCalculator:
     def total_accumulated_power(self) -> int:
         return self.__total_accumulated_power
 
+    def set_file(self, file):
+        self.__file = file
+
     def get_prep(self, addr: str) -> Optional[PRep]:
         if addr not in self.__preps.keys():
             return None
@@ -254,7 +263,6 @@ class PRepCalculator:
             return prep.reward()
 
     def update_enables(self, rpc: RPC):
-        debug_print(-1, f"update_enables at {self.__end_height}")
         for prep in self.__preps.values():
             prep.update_enable(rpc, self.__end_height)
 
@@ -278,19 +286,25 @@ class PRepCalculator:
             self.__preps[k] = prep
 
     def run(self, rpc: RPC, votes: Dict[str, Votes]):
-        print(f">> Calculate PRep reward from {self.__start_height} to {self.__end_height}")
+        self._print(f">> Calculate PRep reward from {self.__start_height} to {self.__end_height}")
         self.update_enables(rpc)
         self.update_accumulated_values(rpc, votes)
         self.calculate_reward()
-        self.print_summary()
+        self.print_summary(file=self.__file)
 
-    def print_summary(self):
-        print(f"PRep reward summary")
-        print(f"Total PRep reward: {self.__total_prep_reward} Total wage: {self.__total_wage}")
-        print(f"Total accumulated power: {self.__total_accumulated_power}")
-        print(f"PReps")
+    def print_summary(self, file=sys.stdout):
+        self._print(f"PRep reward summary", file)
+        self._print(f"Total PRep reward: {self.__total_prep_reward} Total wage: {self.__total_wage}", file)
+        self._print(f"Total accumulated power: {self.__total_accumulated_power}", file)
+        self._print(f"PReps", file)
         for i, prep in enumerate(self.__preps.values()):
-            print(f"\t#{i}: {prep}")
+            self._print(f"\t#{i}: {prep}", file)
+
+    def _print(self, msg, file=None):
+        if file is not None:
+            print(msg, file=file)
+        elif self.__file is not None:
+            print(msg, file=self.__file)
 
     @staticmethod
     def from_term(term: dict) -> PRepCalculator:

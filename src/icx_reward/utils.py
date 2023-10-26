@@ -1,28 +1,12 @@
 import json
 import sys
 
-DEBUG = False
-TAB = "\t"
 
-
-def debug_print(level: int, msg: str):
-    tab_print(DEBUG, level, msg)
-
-
-def tab_print(enable: bool, level: int, msg: str):
-    if not enable:
-        return
-    if level < 0:
-        print(msg)
-    else:
-        print(f"{TAB * level}[{level}] {msg}")
-
-
-def pprint(data):
+def pprint(data, file=sys.stdout):
     if isinstance(data, dict):
-        print(json.dumps(data, indent=4))
+        print(json.dumps(data, indent=4), file=file)
     else:
-        print(data)
+        print(data, file=file)
 
 
 def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_length=100):
