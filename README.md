@@ -1,6 +1,3 @@
-[![PyPI - latest](https://img.shields.io/pypi/v/icx-reward?label=latest&logo=pypi)](https://pypi.org/project/iscore-check)
-[![PyPI - Python](https://img.shields.io/pypi/pyversions/icx-reward?logo=pypi)](https://pypi.org/project/iscore-check)
-
 # icx-reward
 Tools for ICON reward.
 
