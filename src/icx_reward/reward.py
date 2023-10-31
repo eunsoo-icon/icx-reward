@@ -29,7 +29,7 @@ class PRep:
     def __repr__(self):
         return (f"PRep('address': '{self.__address}', 'enable': {self.__enable}, "
                 f"'accum_voted': {self.__accumulated_voted}, 'accum_power': {self.__accumulated_power}, "
-                f"'reward': {self.reward()}, 'voter_reward': {self.__voter_reward})")
+                f"'commission': {self.__commission}, 'wage': {self.__wage}, 'voter_reward': {self.__voter_reward})")
 
     @property
     def enable(self) -> bool:
@@ -54,6 +54,14 @@ class PRep:
     @property
     def penalties(self) -> Dict[int, Penalty]:
         return self.__penalties
+
+    @property
+    def commission(self) -> int:
+        return self.__commission
+
+    @property
+    def wage(self) -> int:
+        return self.__wage
 
     def rewardable(self) -> bool:
         return self.__enable and self.__accumulated_power > 0
@@ -172,15 +180,21 @@ class Voter:
 
     def calculate(self):
         self._print(
-            f">> Calculate Voter reward of {self.__address} = sum(prep.voter_reward * voter.accum_vote(prep) // prep.accum_voted)")
+            f">> Calculate Voter reward of {self.__address} = sum(PRep.voter_reward * Voter.accum_vote(prep) // PRep.accum_voted)")
         for addr, value in self.__accum_vote.items():
             prep = self.__preps.get(addr, None)
+            if value == 0:
+                continue
             if prep is None:
                 self._print(f"\tvote to {addr}: Not elected PRep")
                 continue
             reward = prep.voter_reward_for(value)
             self._print(f"\tvote to {addr}: {reward} = {prep.voter_reward} * {value} // {prep.accumulated_voted}")
             self.__reward += reward
+        if len(self.__accum_vote) == 0:
+            self._print(f"<< {self.__address} has no vote")
+        else:
+            self._print(f"<< Voter reward: {self.__reward}")
 
     def _print(self, msg: str):
         if self.__file is not None:
@@ -189,7 +203,7 @@ class Voter:
 
 class PRepCalculator:
     def __init__(self, start: int, end: int, br: int, validator_count: int, min_bond: int, preps: dict,
-                 iglobal: int, iprep: int, iwage: int):
+                 iglobal: int, iprep: int, iwage: int, fp=sys.stdout):
         self.__start_height: int = start
         self.__end_height: int = end
         self.__br: int = br
@@ -201,7 +215,7 @@ class PRepCalculator:
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
 
-        self.__file = None
+        self.__file = fp
 
     @staticmethod
     def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
@@ -255,13 +269,6 @@ class PRepCalculator:
         else:
             return self.__preps[addr]
 
-    def get_prep_reward(self, addr: str) -> int:
-        prep = self.get_prep(addr)
-        if prep is None:
-            return 0
-        else:
-            return prep.reward()
-
     def update_enables(self, rpc: RPC):
         for prep in self.__preps.values():
             prep.update_enable(rpc, self.__end_height)
@@ -286,17 +293,16 @@ class PRepCalculator:
             self.__preps[k] = prep
 
     def run(self, rpc: RPC, votes: Dict[str, Votes]):
-        self._print(f">> Calculate PRep reward from {self.__start_height} to {self.__end_height}")
+        self._print(f">> Calculate reward of elected PReps from {self.__start_height} to {self.__end_height}")
         self.update_enables(rpc)
         self.update_accumulated_values(rpc, votes)
         self.calculate_reward()
-        self.print_summary(file=self.__file)
 
     def print_summary(self, file=sys.stdout):
-        self._print(f"PRep reward summary", file)
-        self._print(f"Total PRep reward: {self.__total_prep_reward} Total wage: {self.__total_wage}", file)
+        self._print(f"<< PRep reward summary", file)
+        self._print(f"Total PRep reward: {self.__total_prep_reward}, Total wage: {self.__total_wage}", file)
         self._print(f"Total accumulated power: {self.__total_accumulated_power}", file)
-        self._print(f"PReps", file)
+        self._print(f"Elected PReps", file)
         for i, prep in enumerate(self.__preps.values()):
             self._print(f"\t#{i}: {prep}", file)
 

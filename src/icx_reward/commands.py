@@ -80,20 +80,21 @@ def check(args: dict, rpc: RPC):
     event_start_height = start_height - 2 * period
     event_end_height = end_height - 2 * period
 
-    print(f"## Check reward of {address} at height {height}\n")
+    print(f"## Check reward of {address} at height {height if height is not None else 'latest'}\n")
 
     # get all vote events
-    vf = VoteFetcher(rpc, event_start_height, event_end_height, import_fp, file=sys.stdout)
-    if import_fp is None:
-        vf.run()
+    vf = VoteFetcher(
+        rpc=rpc, start_height=event_start_height, end_height=event_end_height, import_fp=import_fp, file=sys.stdout,
+    )
+    vf.run()
     votes = vf.votes
 
     print()
 
     # prep reward
     pc = PRepCalculator.from_term(rpc.term(event_start_height))
-    pc.set_file(sys.stdout)
     pc.run(rpc, votes)
+    pc.print_summary(sys.stdout)
 
     print()
 
@@ -102,9 +103,13 @@ def check(args: dict, rpc: RPC):
     voter.update_accumulated_vote()
     voter.calculate()
 
-    reward = pc.get_prep_reward(address) + voter.reward
+    print()
 
-    print(f"\n## Calculated reward: PRep + Voter = {pc.get_prep_reward(address)} + {voter.reward} = {reward}")
+    prep = pc.get_prep(address)
+    reward = (0 if prep is None else prep.reward()) + voter.reward
+    print(f"## Calculated reward: {reward}")
+    print(f"\t= PRep.commission + PRep.wage + Voter.reward")
+    print(f"\t= {0 if prep is None else prep.commission} + {0 if prep is None else prep.wage} + {voter.reward}")
 
     # query iscore from network
     iscore = (int(rpc.query_iscore(address, start_height + 1).get("iscore", "0x0"), 16)

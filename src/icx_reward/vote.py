@@ -207,8 +207,7 @@ class VoteFetcher:
         self.__start_height = start_height
         self.__end_height = end_height
         self.__votes: Dict[str, Votes] = {}
-        if import_fp is not None:
-            self._import(import_fp)
+        self.__import_fp = import_fp
         self.__file = file
 
     def __repr__(self):
@@ -231,6 +230,10 @@ class VoteFetcher:
             self.__votes[addr] = Votes.from_dict(addr, votes)
 
     def run(self):
+        if self.__import_fp is not None:
+            self._import(self.__import_fp)
+            return
+
         self._print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
         height = self.__start_height
         while height <= self.__end_height:
