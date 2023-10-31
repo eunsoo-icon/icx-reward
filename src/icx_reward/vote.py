@@ -5,6 +5,9 @@ import sys
 from copy import deepcopy
 from typing import Dict, List, Optional
 
+from iconsdk.providers.provider import MonitorTimeoutException
+from iconsdk.monitor import EventFilter, EventMonitorSpec
+
 from icx_reward.rpc import RPC
 from icx_reward.types.address import Address
 from icx_reward.types.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
@@ -167,7 +170,8 @@ class Votes:
         else:
             self.__delegations.append(vote)
 
-    def _vote_values_for_prep(self, rpc: RPC, votes: List[Vote], prep: str, start_height: int, offset_limit: int) -> int:
+    def _vote_values_for_prep(self, rpc: RPC, votes: List[Vote], prep: str, start_height: int,
+                              offset_limit: int) -> int:
         if len(votes) == 0:
             return 0
         if votes[0].type == Vote.TYPE_BOND:
@@ -235,6 +239,9 @@ class VoteFetcher:
             return
 
         self._print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
+        self._fetch_via_websocket()
+
+    def _fetch_via_json_rpc(self):
         height = self.__start_height
         while height <= self.__end_height:
             self._print_progress(height)
@@ -246,6 +253,46 @@ class VoteFetcher:
                 votes = self.tx_result_to_votes(height - self.__start_height, tx_result)
                 self.update_votes(votes)
             height += 1
+
+    def _fetch_via_websocket(self):
+        monitor = self.__rpc.sdk.monitor(
+            spec=EventMonitorSpec(
+                height=self.__start_height+1,
+                filters=[
+                    EventFilter(
+                        event=EventSig.SetDelegation,
+                        addr=SYSTEM_ADDRESS,
+                        indexed=0,
+                    ),
+                    EventFilter(
+                        event=EventSig.SetBond,
+                        addr=SYSTEM_ADDRESS,
+                        indexed=0,
+                    ),
+                ],
+                logs=True,
+                progress_interval=1000,
+            ),
+        )
+
+        while True:
+            try:
+                data = monitor.read(timeout=5)
+            except MonitorTimeoutException:
+                break
+            height = int(data.get("height", data.get("progress")), 16) - 1
+            if height > self.__end_height:
+                self._print_progress(height)
+                break
+            self._print_progress(height)
+            if "progress" in data.keys():
+                continue
+            votes = []
+            offset = height - self.__start_height
+            for event in data["logs"]:
+                vote = Vote.from_event(offset, event)
+                votes.append(vote)
+            self.update_votes(votes)
 
     def update_votes(self, votes: List[Vote]):
         for vote in votes:
@@ -311,9 +358,12 @@ class VoteFetcher:
     def _print_progress(self, height: int):
         if self.__file is None or self.__file != sys.stdout:
             return
+        start_height = self.__start_height - 1
+        if height > self.__end_height:
+            height = self.__end_height
         print_progress(
-            iteration=height - self.__start_height,
-            total=self.__end_height - self.__start_height,
+            iteration=height - start_height,
+            total=self.__end_height - start_height,
             prefix="Progress", suffix="Complete",
             decimals=1, bar_length=50,
         )
