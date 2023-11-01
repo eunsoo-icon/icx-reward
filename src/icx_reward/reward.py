@@ -172,10 +172,19 @@ class Voter:
                 else:
                     self.__accum_vote[prep.address] = -amount
 
-    def update_accumulated_vote(self):
+    def update_accumulated_vote(self, rpc: RPC):
+        # original vote
+        bonds = [Vote.from_get_bond(self.__address, rpc.get_bond(self.__address, self.__start_height))]
+        delegations = [Vote.from_get_delegation(self.__address, rpc.get_delegation(self.__address, self.__start_height))]
+        # new votes
         if self.__votes is not None:
-            self._update_accumulated_vote_with_votes(self.__votes.bonds)
-            self._update_accumulated_vote_with_votes(self.__votes.delegations)
+            bonds.extend(self.__votes.bonds)
+            delegations.extend(self.__votes.delegations)
+
+        self._update_accumulated_vote_with_votes(bonds)
+        self._update_accumulated_vote_with_votes(delegations)
+
+        # slash event
         self._update_accumulated_vote_with_slash()
 
     def calculate(self):

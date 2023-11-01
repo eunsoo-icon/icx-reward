@@ -101,7 +101,7 @@ def check(args: dict, rpc: RPC):
 
     # voter reward
     voter = Voter(address, votes.get(address, None), pc.start_height, pc.offset_limit(), pc.preps, sys.stdout)
-    voter.update_accumulated_vote()
+    voter.update_accumulated_vote(rpc)
     voter.calculate()
 
     print()
