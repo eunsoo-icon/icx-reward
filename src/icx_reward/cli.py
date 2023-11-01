@@ -41,8 +41,8 @@ subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 cmds = [
     ("query", "query I-Score of account", [add_uri, add_address, add_height]),
     ("check", "check I-Score of account", [add_uri, add_address, add_height, add_export_vote, add_import_vote]),
-    ("fetch-vote", "fetch vote events in given Term", [add_uri, add_height, add_export_vote]),
-    ("find-penalty", "find penalties of account in given Term", [add_uri, add_address, add_height]),
+    ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_height, add_export_vote]),
+    ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address, add_height]),
     ("term", "get Term information", [add_uri, add_height]),
 ]
 for cmd in cmds:

@@ -42,6 +42,7 @@ def fetch_vote(args: dict, rpc: RPC):
         pprint("Can't fetch vote. Support IISS 4 only.")
         return
 
+    pprint(f"## Fetch all votes from {start_height} to {end_height}")
     vf = VoteFetcher(rpc, start_height, end_height, file=sys.stdout)
     vf.run()
     if export_fp is not None:
@@ -52,11 +53,11 @@ def fetch_vote(args: dict, rpc: RPC):
 
 
 @use_rpc
-def find_penalty(args: dict, rpc: RPC):
+def fetch_penalty(args: dict, rpc: RPC):
     _, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
     address = args["address"]
 
-    pprint(f"## Find penalties of {address} from {start_height} to {end_height}")
+    pprint(f"## Fetch penalties of {address} from {start_height} to {end_height}")
     try:
         pf = PenaltyFetcher(rpc, address, start_height, end_height)
     except InvalidParamsException as e:
