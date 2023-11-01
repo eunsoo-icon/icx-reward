@@ -3,14 +3,14 @@ from typing import Dict, List, Optional
 from iconsdk.exception import JSONRPCException
 
 from icx_reward.types.constants import SYSTEM_ADDRESS
-from icx_reward.types.event import EventSig
+from icx_reward.types.event import Event, EventSig
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import PenaltyFlag, PRep
 from icx_reward.rpc import RPC
 
 
 class Penalty:
-    def __init__(self, height: int, flag: PenaltyFlag, events: List[Dict]):
+    def __init__(self, height: int, flag: PenaltyFlag, events: List[Event]):
         self.__height = height
         self.__flag = flag
         self.__events = events
@@ -19,9 +19,9 @@ class Penalty:
         amount = 0
         period = end_height - self.__height
         for event in self.__events:
-            if event["indexed"][0] == EventSig.Slash and len(event["data"]) == 2:
-                if bonder_address is None or event["data"][0] == bonder_address:
-                    amount += int(event["data"][1], 16) * period
+            if event.indexed[0] == EventSig.Slash and len(event.data) == 2:
+                if bonder_address is None or event.data[0] == bonder_address:
+                    amount += int(event.data[1], 16) * period
         return amount
 
     def print(self):
@@ -31,6 +31,8 @@ class Penalty:
 
 
 class PenaltyFetcher:
+    Signatures = [EventSig.Penalty, EventSig.Slash]
+
     def __init__(self, rpc: RPC, address: str, start_height: int, end_height: int):
         self.__rpc = rpc
         self.__address = address
@@ -63,6 +65,8 @@ class PenaltyFetcher:
         return self._get_prep(height).penalty
 
     def run(self):
+        self.__penalties.clear()
+
         low, high = self.__start_height, self.__end_height
         cur_penalty = self._get_penalty_flag(low)
         target_penalty = self._get_penalty_flag(high)
@@ -78,7 +82,7 @@ class PenaltyFetcher:
                 prev_penalty = self._get_penalty_flag(mid - 1)
                 if cur_penalty == prev_penalty:
                     # mid-1 is penalty height
-                    self._add_penalty(mid - 1, ~cur_penalty & penalty)
+                    self._get_and_add_penalty(mid - 1, ~cur_penalty & penalty)
                     if target_penalty == penalty:
                         break
                     # find again from mid
@@ -91,25 +95,25 @@ class PenaltyFetcher:
             else:
                 low = mid + 1
 
-    def _add_penalty(self, height, flag: PenaltyFlag):
+    def _get_and_add_penalty(self, height: int, flag: PenaltyFlag):
         self.__penalties[height] = Penalty(
             height=height,
             flag=flag,
-            events=self._get_events(self.__rpc, height, self.__address, [EventSig.Penalty, EventSig.Slash]),
+            events=self._get_events(self.__rpc, height),
         )
 
-    @staticmethod
-    def _get_events(rpc: RPC, height: int, address: str, signatures: List[str]) -> List[dict]:
+    def _get_events(self, rpc: RPC, height: int) -> List[Event]:
         events = []
         block = rpc.sdk.get_block(height)
         tx_result = rpc.sdk.get_transaction_result(block["confirmed_transaction_list"][0]["txHash"])
-        for event in tx_result["eventLogs"]:
-            indexed = event["indexed"]
-            if event["scoreAddress"] == SYSTEM_ADDRESS and indexed[0] in signatures and indexed[1] == address:
+        for log in tx_result["eventLogs"]:
+            event = Event.from_dict(log)
+            if (event.score_address == SYSTEM_ADDRESS and event.indexed[0] in self.Signatures
+                    and event.indexed[1] == self.__address):
                 events.append(event)
         return events
 
     def print_result(self):
-        print(f"## Penalties of {self.__address}")
+        print(f"<< Penalties of {self.__address}")
         for pi in self.__penalties.values():
             pi.print()

@@ -5,14 +5,14 @@ import sys
 from copy import deepcopy
 from typing import Dict, List, Optional
 
-from iconsdk.providers.provider import MonitorTimeoutException
 from iconsdk.monitor import EventFilter, EventMonitorSpec
+from iconsdk.providers.provider import MonitorTimeoutException
 
 from icx_reward.rpc import RPC
 from icx_reward.types.address import Address
 from icx_reward.types.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
 from icx_reward.types.constants import SYSTEM_ADDRESS
-from icx_reward.types.event import EventSig
+from icx_reward.types.event import Event, EventSig
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.rlp import rlp_decode
 from icx_reward.types.utils import bytes_to_int
@@ -85,10 +85,13 @@ class Vote:
         return v
 
     @staticmethod
-    def from_event(offset: int, event: dict) -> Vote:
-        sig = event["indexed"][0]
-        voter = event["indexed"][1]
-        vote_data = event["data"][0][2:]
+    def from_event(offset: int, event: Event) -> Vote:
+        if event.score_address != SYSTEM_ADDRESS:
+            raise InvalidParamsException(f"invalid scoreAddress {event.score_address}")
+        if event.signature not in EventSig.VOTE_SIG_LIST:
+            raise InvalidParamsException(f"invalid signature {event.signature}")
+        voter = event.indexed[1]
+        vote_data = event.data[0][2:]
 
         data = []
         vote_bytes = bytes.fromhex(vote_data)
@@ -98,31 +101,10 @@ class Vote:
 
         return Vote(
             owner=voter,
-            _type=Vote.TYPE_BOND if sig == EventSig.SetBond else Vote.TYPE_DELEGATE,
+            _type=Vote.TYPE_BOND if event.signature == EventSig.SetBond else Vote.TYPE_DELEGATE,
             offset=offset,
             data=data,
         )
-
-    @staticmethod
-    def from_block_tx(tx: dict, offset: int) -> Optional[Vote]:
-        if tx["to"] == SYSTEM_ADDRESS and tx["dataType"] == "call" and \
-                tx["data"]["method"] in ["setDelegation", "setBond"]:
-            _type = Vote.TYPE_BOND
-            votes = "bonds"
-            if tx["data"]["method"] != "setBond":
-                _type = Vote.TYPE_DELEGATE
-                votes = "delegations"
-            vote = Vote(
-                _type=_type,
-                offset=offset,
-                data=tx["data"]["params"][votes],
-            )
-            return vote
-        return None
-
-    @staticmethod
-    def from_tx(tx: dict, start_height: int) -> Optional[Vote]:
-        return Vote.from_block_tx(tx, tx["blockHeight"] - start_height)
 
     @staticmethod
     def from_get_bond(owner: str, value: dict) -> Vote:
@@ -234,6 +216,8 @@ class VoteFetcher:
             self.__votes[addr] = Votes.from_dict(addr, votes)
 
     def run(self):
+        self.__votes.clear()
+
         if self.__import_fp is not None:
             self._import(self.__import_fp)
             return
@@ -287,12 +271,8 @@ class VoteFetcher:
             self._print_progress(height)
             if "progress" in data.keys():
                 continue
-            votes = []
             offset = height - self.__start_height
-            for event in data["logs"]:
-                vote = Vote.from_event(offset, event)
-                votes.append(vote)
-            self.update_votes(votes)
+            self.update_votes([Vote.from_event(offset, Event.from_dict(d)) for d in data["logs"]])
 
     def update_votes(self, votes: List[Vote]):
         for vote in votes:
@@ -337,16 +317,13 @@ class VoteFetcher:
         if not pass_sig:
             return votes
 
-        for event in tx_result["eventLogs"]:
-            if len(event["indexed"]) != 2 or len(event["data"]) != 1:
+        for log in tx_result["eventLogs"]:
+            try:
+                vote = Vote.from_event(offset, Event.from_dict(log))
+            except InvalidParamsException:
                 continue
-            score_address = event["scoreAddress"]
-            sig = event["indexed"][0]
-            if score_address != SYSTEM_ADDRESS and sig not in EventSig.VOTE_SIG_LIST:
+            if owner is not None and vote.owner != owner:
                 continue
-            if owner is not None and event["indexed"][1] != owner:
-                continue
-            vote = Vote.from_event(offset, event)
             votes.append(vote)
 
         return votes

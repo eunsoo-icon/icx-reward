@@ -56,7 +56,7 @@ def find_penalty(args: dict, rpc: RPC):
     _, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
     address = args["address"]
 
-    pprint(f"Find penalties of {address} from {start_height} to {end_height}")
+    pprint(f"## Find penalties of {address} from {start_height} to {end_height}")
     try:
         pf = PenaltyFetcher(rpc, address, start_height, end_height)
     except InvalidParamsException as e:
