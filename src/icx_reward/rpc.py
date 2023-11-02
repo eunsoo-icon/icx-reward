@@ -8,9 +8,14 @@ from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.prep import PRep
 
 
-class RPC:
+class RPCBase:
     def __init__(self, uri: str):
+        self.__uri = uri
         self.__sdk = IconService(HTTPProvider(uri, request_kwargs={"timeout": 120}))
+
+    @property
+    def uri(self) -> str:
+        return self.__uri
 
     @property
     def sdk(self) -> IconService:
@@ -29,6 +34,11 @@ class RPC:
             .height(height) \
             .build()
         return self.__sdk.call(cb)
+
+
+class RPC(RPCBase):
+    def __init__(self, uri: str):
+        super().__init__(uri)
 
     def query_iscore(self,
                      address: str,

@@ -1,19 +1,24 @@
 from typing import Dict, List, Optional
 
 from iconsdk.exception import JSONRPCException
+from iconsdk.monitor import EventFilter, EventMonitorSpec
+from iconsdk.providers.provider import MonitorTimeoutException
 
+from icx_reward.rpc import RPCBase
 from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.event import Event, EventSig
 from icx_reward.types.exception import InvalidParamsException
-from icx_reward.types.prep import PenaltyFlag, PRep
-from icx_reward.rpc import RPC
+from icx_reward.types.prep import PRep
+from icx_reward.utils import print_progress
 
 
 class Penalty:
-    def __init__(self, height: int, flag: PenaltyFlag, events: List[Event]):
+    def __init__(self, height: int, events: List[Event]):
         self.__height = height
-        self.__flag = flag
         self.__events = events
+
+    def __repr__(self):
+        return f"Penalty('height': {self.__height}, 'events': {self.__events}"
 
     def accumulated_slash_amount(self, end_height: int, bonder_address: str = None) -> int:
         amount = 0
@@ -24,96 +29,81 @@ class Penalty:
                     amount += int(event.data[1], 16) * period
         return amount
 
-    def print(self):
-        print(f"At block height {self.__height}: {self.__flag}")
-        for e in self.__events:
-            print(f"\t{e}")
 
+class PenaltyFetcher(RPCBase):
+    def __init__(self, uri: str):
+        super().__init__(uri=uri)
 
-class PenaltyFetcher:
-    Signatures = [EventSig.Penalty, EventSig.Slash]
-
-    def __init__(self, rpc: RPC, address: str, start_height: int, end_height: int):
-        self.__rpc = rpc
-        self.__address = address
-        self.__start_height = start_height
-        self.__end_height = end_height
-        self.__penalties: Dict[int, Penalty] = {}
-        if not self._is_prep(self.__end_height):
-            raise InvalidParamsException(f"{self.__address} is not P-Rep")
-
-    @property
-    def address(self):
-        return self.__address
-
-    @property
-    def penalties(self) -> Dict[int, Penalty]:
-        return self.__penalties
-
-    def _get_prep(self, height: int) -> Optional[PRep]:
+    def _get_prep(self, address: str, height: int = None) -> Optional[PRep]:
         try:
-            prep = self.__rpc.get_prep(self.__address, height, to_obj=True)
+            resp = self.call(
+                to=SYSTEM_ADDRESS,
+                method="getPRep",
+                params={"address": address},
+                height=height,
+            )
         except JSONRPCException:
             return None
         else:
-            return prep
+            return PRep.from_dict(resp)
 
-    def _is_prep(self, height: int) -> bool:
-        return self._get_prep(height) is not None
+    def _is_prep(self, address, height: int) -> bool:
+        return self._get_prep(address, height) is not None
 
-    def _get_penalty_flag(self, height: int) -> PenaltyFlag:
-        return self._get_prep(height).penalty
+    @staticmethod
+    def _event_filter(address: str = None) -> List[EventFilter]:
+        if address is None:
+            return [
+                EventFilter(event=EventSig.Penalty, addr=SYSTEM_ADDRESS, indexed=0),
+                EventFilter(event=EventSig.Slash, addr=SYSTEM_ADDRESS, indexed=0),
+            ]
+        else:
+            return [
+                EventFilter(EventSig.Penalty, SYSTEM_ADDRESS, 1, address),
+                EventFilter(EventSig.Slash, SYSTEM_ADDRESS, 1, address),
+            ]
 
-    def run(self):
-        self.__penalties.clear()
+    def run(self, start_height: int, end_height: int, address: str = None, progress: bool = False) -> Dict[int, Penalty]:
+        penalties: Dict[int, Penalty] = {}
 
-        low, high = self.__start_height, self.__end_height
-        cur_penalty = self._get_penalty_flag(low)
-        target_penalty = self._get_penalty_flag(high)
+        if address is not None and not self._is_prep(address, end_height):
+            raise InvalidParamsException(f"{address} is not P-Rep")
 
-        if cur_penalty == target_penalty:
-            return
-
-        # find penalties
-        while low <= high:
-            mid = (low + high) // 2
-            penalty = self._get_penalty_flag(mid)
-            if cur_penalty != penalty:
-                prev_penalty = self._get_penalty_flag(mid - 1)
-                if cur_penalty == prev_penalty:
-                    # mid-1 is penalty height
-                    self._get_and_add_penalty(mid - 1, ~cur_penalty & penalty)
-                    if target_penalty == penalty:
-                        break
-                    # find again from mid
-                    low = mid + 1
-                    high = self.__end_height
-                    cur_penalty = penalty
-                    continue
-                else:
-                    high = mid - 1
-            else:
-                low = mid + 1
-
-    def _get_and_add_penalty(self, height: int, flag: PenaltyFlag):
-        self.__penalties[height] = Penalty(
-            height=height,
-            flag=flag,
-            events=self._get_events(self.__rpc, height),
+        monitor = self.sdk.monitor(
+            spec=EventMonitorSpec(
+                height=start_height + 1,
+                filters=self._event_filter(address),
+                logs=True,
+                progress_interval=100,
+            )
         )
 
-    def _get_events(self, rpc: RPC, height: int) -> List[Event]:
-        events = []
-        block = rpc.sdk.get_block(height)
-        tx_result = rpc.sdk.get_transaction_result(block["confirmed_transaction_list"][0]["txHash"])
-        for log in tx_result["eventLogs"]:
-            event = Event.from_dict(log)
-            if (event.score_address == SYSTEM_ADDRESS and event.indexed[0] in self.Signatures
-                    and event.indexed[1] == self.__address):
-                events.append(event)
-        return events
+        while True:
+            try:
+                data = monitor.read(timeout=5)
+            except MonitorTimeoutException:
+                break
+            height = int(data.get("height", data.get("progress")), 16) - 1
+            if height > end_height:
+                if progress:
+                    self._print_progress(height, start_height, end_height)
+                break
+            if progress:
+                self._print_progress(height, start_height, end_height)
+            if "progress" in data.keys():
+                continue
+            penalties[height] = Penalty(height=height, events=[Event.from_dict(log) for log in data["logs"]])
 
-    def print_result(self):
-        print(f"<< Penalties of {self.__address}")
-        for pi in self.__penalties.values():
-            pi.print()
+        return penalties
+
+    @staticmethod
+    def _print_progress(height: int, start: int, end: int):
+        start_height = start - 1
+        if height > end:
+            height = end
+        print_progress(
+            iteration=height - start_height,
+            total=end - start_height,
+            prefix="Progress", suffix="Complete",
+            decimals=1, bar_length=50,
+        )

@@ -93,9 +93,8 @@ class PRep:
 
     def _update_accumulated_values_with_slash(self, rpc: RPC, start_height: int, end_height: int):
         if not self.__enable:
-            pf = PenaltyFetcher(rpc, self.__address, start_height, end_height)
-            pf.run()
-            self.__penalties = pf.penalties
+            pf = PenaltyFetcher(rpc.uri)
+            self.__penalties = pf.run(start_height, end_height, self.__address)
             for penalty in self.__penalties.values():
                 amount = penalty.accumulated_slash_amount(end_height)
                 self.__accumulated_bonded -= amount

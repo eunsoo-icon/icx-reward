@@ -17,6 +17,21 @@ def use_rpc(f):
     return wrapper
 
 
+def use_term_info(f):
+    @wraps(f)
+    def wrapper(args):
+        rpc = RPC(args["uri"])
+        resp = rpc.term(args.get("height", None))
+        start_height = int(resp["startBlockHeight"], 16)
+        end_height = int(resp["endBlockHeight"], 16)
+        last_height = rpc.sdk.get_block("latest")["height"]
+        if last_height < end_height:
+            end_height = last_height
+        return f(args, resp, start_height, end_height)
+
+    return wrapper
+
+
 @use_rpc
 def query(args: dict, rpc: RPC):
     resp = rpc.query_iscore(
@@ -52,19 +67,21 @@ def fetch_vote(args: dict, rpc: RPC):
         vf.print_result()
 
 
-@use_rpc
-def fetch_penalty(args: dict, rpc: RPC):
-    _, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
+@use_term_info
+def fetch_penalty(args: dict, _term: dict, start_height: int, end_height: int):
     address = args["address"]
 
     pprint(f"## Fetch penalties of {address} from {start_height} to {end_height}")
+    pf = PenaltyFetcher(args["uri"])
     try:
-        pf = PenaltyFetcher(rpc, address, start_height, end_height)
+        penalties = pf.run(start_height, end_height, address, True)
     except InvalidParamsException as e:
         pprint(f"{e}")
         return
-    pf.run()
-    pf.print_result()
+
+    print()
+    for height, penalty in penalties.items():
+        pprint(f"{penalty}")
 
 
 @use_rpc
