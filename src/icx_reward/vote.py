@@ -3,19 +3,18 @@ from __future__ import annotations
 import json
 import sys
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from iconsdk.monitor import EventFilter, EventMonitorSpec
 from iconsdk.providers.provider import MonitorTimeoutException
 
 from icx_reward.rpc import RPC
 from icx_reward.types.address import Address
-from icx_reward.types.bloom import BloomFilter, get_bloom_data, get_score_address_bloom_data
+from icx_reward.types.bloom import get_bloom_data, get_score_address_bloom_data
 from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.event import Event, EventSig
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.rlp import rlp_decode
-from icx_reward.types.utils import bytes_to_int
 from icx_reward.utils import pprint, print_progress
 
 SYSTEM_ADDRESS_BF_DATA = get_score_address_bloom_data(Address.from_string(SYSTEM_ADDRESS))
@@ -26,20 +25,18 @@ class Vote:
     TYPE_BOND = 0
     TYPE_DELEGATE = 1
 
-    def __init__(self, owner: str, _type: int, offset: int = 0, data: List[Dict] = []):
+    def __init__(self, owner: str, _type: int, height: int = -1, values: Dict[str, int] = {}):
         self.__owner = owner
         self.__type = _type
-        self.__offset = offset
-        self.values: Dict[str, int] = {}
-        for d in data:
-            self.values[d["address"]] = d["value"] if isinstance(d["value"], int) else int(d["value"], 16)
+        self.__height = height
+        self.__values: Dict[str, int] = values
 
     def __repr__(self):
-        return f"Vote('owner': '{self.__owner}', 'type': {self.__type}, 'offset': {self.__offset}, 'values': {self.values})"
+        return f"Vote('owner': '{self.__owner}', 'type': {self.__type}, 'height': {self.__height}, 'values': {self.__values})"
 
     def __deepcopy__(self, memodict={}):
-        copy = Vote(owner=self.__owner, _type=self.__type, offset=self.__offset)
-        copy.values = deepcopy(self.values)
+        copy = Vote(owner=self.__owner, _type=self.__type, height=self.__height)
+        copy.__values = deepcopy(self.__values)
         return copy
 
     @property
@@ -51,27 +48,33 @@ class Vote:
         return self.__type
 
     @property
-    def offset(self) -> int:
-        return self.__offset
+    def height(self) -> int:
+        return self.__height
 
-    @offset.setter
-    def offset(self, offset: int):
-        self.__offset = offset
+    @property
+    def values(self) -> Dict[str, int]:
+        return self.__values
+
+    def offset(self, start_height: int) -> int:
+        if self.__height == -1:
+            return self.__height
+        else:
+            return self.__height - start_height
 
     def diff(self, prev: Vote) -> Vote:
         diff = deepcopy(self)
         if prev is None:
             return diff
-        for k, v in prev.values.items():
-            diff.values[k] = diff.values.get(k, 0) - v
+        for k, v in prev.__values.items():
+            diff.__values[k] = diff.__values.get(k, 0) - v
         return diff
 
     def to_dict(self) -> dict:
         return {
             "owner": self.__owner,
             "type": self.__type,
-            "offset": self.__offset,
-            "vote": self.values
+            "height": self.__height,
+            "values": self.__values
         }
 
     @staticmethod
@@ -79,9 +82,9 @@ class Vote:
         v = Vote(
             owner=value["owner"],
             _type=value["type"],
-            offset=value["offset"],
+            height=value["height"],
         )
-        v.values = value["vote"]
+        v.__values = value["values"]
         return v
 
     @staticmethod
@@ -93,35 +96,39 @@ class Vote:
         voter = event.indexed[1]
         vote_data = event.data[0][2:]
 
-        data = []
+        data = {}
         vote_bytes = bytes.fromhex(vote_data)
         unpacked = rlp_decode(vote_bytes, {list: [bytes, int]})
         for v in unpacked:
-            data.append({"address": str(Address.from_bytes(v[0])), "value": v[1]})
+            data[str(Address.from_bytes(v[0]))] = v[1]
 
         return Vote(
             owner=voter,
             _type=Vote.TYPE_BOND if event.signature == EventSig.SetBond else Vote.TYPE_DELEGATE,
-            offset=offset,
-            data=data,
+            height=offset,
+            values=data,
         )
 
     @staticmethod
     def from_get_bond(owner: str, value: dict) -> Vote:
+        values = {}
+        for v in value["bonds"]:
+            values[v["address"]] = v["value"] if isinstance(v["value"], int) else int(v["value"], 16)
         return Vote(
             owner=owner,
             _type=Vote.TYPE_BOND,
-            offset=-1,
-            data=value["bonds"],
+            values=values,
         )
 
     @staticmethod
     def from_get_delegation(owner: str, value: dict) -> Vote:
+        values = {}
+        for v in value["delegations"]:
+            values[v["address"]] = v["value"] if isinstance(v["value"], int) else int(v["value"], 16)
         return Vote(
             owner=owner,
             _type=Vote.TYPE_DELEGATE,
-            offset=-1,
-            data=value["delegations"],
+            values=values,
         )
 
 
@@ -163,7 +170,7 @@ class Votes:
         accum_value = 0
         for vote in votes:
             diff = vote.diff(prev)
-            period = offset_limit - diff.offset
+            period = offset_limit - diff.offset(start_height)
             if prep in diff.values.keys():
                 accum_value += period * diff.values[prep]
             prev = vote
@@ -225,23 +232,10 @@ class VoteFetcher:
         self._print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
         self._fetch_via_websocket()
 
-    def _fetch_via_json_rpc(self):
-        height = self.__start_height
-        while height <= self.__end_height:
-            self._print_progress(height)
-            block = self.__rpc.sdk.get_block(height)
-            for i, tx in enumerate(block["confirmed_transaction_list"]):
-                if i == 0:
-                    continue
-                tx_result = self.__rpc.sdk.get_transaction_result(tx["txHash"])
-                votes = self.tx_result_to_votes(height - self.__start_height, tx_result)
-                self.update_votes(votes)
-            height += 1
-
     def _fetch_via_websocket(self):
         monitor = self.__rpc.sdk.monitor(
             spec=EventMonitorSpec(
-                height=self.__start_height+1,
+                height=self.__start_height + 1,
                 filters=[
                     EventFilter(
                         event=EventSig.SetDelegation,
@@ -271,8 +265,7 @@ class VoteFetcher:
             self._print_progress(height)
             if "progress" in data.keys():
                 continue
-            offset = height - self.__start_height
-            self.update_votes([Vote.from_event(offset, Event.from_dict(d)) for d in data["logs"]])
+            self.update_votes([Vote.from_event(height, Event.from_dict(d)) for d in data["logs"]])
 
     def update_votes(self, votes: List[Vote]):
         for vote in votes:
@@ -300,33 +293,6 @@ class VoteFetcher:
             "endHeight": self.__end_height,
             "votes": votes
         }
-
-    @staticmethod
-    def tx_result_to_votes(offset: int, tx_result: dict, owner: str = None) -> List[Vote]:
-        votes: List[Vote] = []
-        bf = BloomFilter(bytes_to_int(tx_result["logsBloom"]))
-
-        if SYSTEM_ADDRESS_BF_DATA not in bf:
-            return votes
-
-        pass_sig = False
-        for data in VOTE_SIG_BF_DATA:
-            if data in bf:
-                pass_sig = True
-                break
-        if not pass_sig:
-            return votes
-
-        for log in tx_result["eventLogs"]:
-            try:
-                vote = Vote.from_event(offset, Event.from_dict(log))
-            except InvalidParamsException:
-                continue
-            if owner is not None and vote.owner != owner:
-                continue
-            votes.append(vote)
-
-        return votes
 
     def _print(self, msg):
         if self.__file is not None:

@@ -151,7 +151,7 @@ class Voter:
             else:
                 prev = votes[i - 1]
             diff = vote.diff(prev)
-            period = self.__offset_limit - diff.offset
+            period = self.__offset_limit - diff.offset(self.__start_height)
             for addr, value in diff.values.items():
                 amount = value * period
                 if addr in self.__accum_vote.keys():
