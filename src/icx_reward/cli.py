@@ -13,12 +13,16 @@ def environ_or_required(key):
     return {"required": True}
 
 
-def add_uri(subparser, _required: bool = True):
+def add_uri(subparser):
     subparser.add_argument("--uri", help="URI of endpoint", **environ_or_required("ICON_ENDPOINT_URI"))
 
 
 def add_address(subparser, required: bool = True):
     subparser.add_argument("--address", type=IconAddress(), help="address of account", required=required)
+
+
+def add_address_optional(subparser):
+    add_address(subparser, False)
 
 
 def add_height(subparser):
@@ -41,8 +45,8 @@ subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 cmds = [
     ("query", "query I-Score of account", [add_uri, add_address, add_height]),
     ("check", "check I-Score of account", [add_uri, add_address, add_height, add_export_vote, add_import_vote]),
-    ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_height, add_export_vote]),
-    ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address, add_height]),
+    ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_height, add_address_optional, add_export_vote]),
+    ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_height]),
     ("term", "get Term information", [add_uri, add_height]),
 ]
 for cmd in cmds:
