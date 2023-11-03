@@ -149,7 +149,10 @@ class Voter:
         return self.__reward
 
     def _update_accumulated_vote_with_votes(self):
-        accum_vote = self.__votes.accumulated_votes_for_voter(self.__start_height, self.__offset_limit)
+        if self.__votes is None:
+            accum_vote = {}
+        else:
+            accum_vote = self.__votes.accumulated_votes_for_voter(self.__start_height, self.__offset_limit)
         for addr, amount in accum_vote.items():
             if addr in self.__accum_vote.keys():
                 self.__accum_vote[addr] += amount
@@ -208,7 +211,6 @@ class PRepRewardCalculator:
         self.__total_prep_reward: int = self._reward_iscore_of_term(iglobal, iprep, self.period())
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
-
         self.__rpc = RPC(uri)
 
     @staticmethod
@@ -294,7 +296,7 @@ class PRepRewardCalculator:
         self.calculate_reward()
 
     def print_summary(self, file=sys.stdout):
-        print(f"<< PRep reward summary", file=file)
+        print(f"<< PRep reward summary. {self.__start_height} ~ {self.__end_height}", file=file)
         print(f"Total PRep reward: {self.__total_prep_reward}, Total wage: {self.__total_wage}", file=file)
         print(f"Total accumulated power: {self.__total_accumulated_power}", file=file)
         print(f"Elected PReps", file=file)

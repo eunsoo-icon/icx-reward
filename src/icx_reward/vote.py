@@ -197,17 +197,16 @@ class Votes:
                 if prep in accum_vote.keys():
                     accum_vote[prep] += amount
                 else:
-                    accum_vote[vote.owner] = amount
+                    accum_vote[prep] = amount
             prev = vote
         return accum_vote
 
     def accumulated_votes_for_voter(self, start_height: int, offset_limit: int) -> Dict[str, int]:
-        accum_votes: Dict[str, int] = {}
         if self.__prev_bond is None:
             votes = self.__bonds
         else:
             votes = [self.__prev_bond] + self.__bonds
-        accum_votes = self._accumulated_votes_for_voter(start_height, offset_limit, votes, accum_votes)
+        accum_votes = self._accumulated_votes_for_voter(start_height, offset_limit, votes, {})
 
         if self.__prev_delegation is None:
             votes = self.__delegations
@@ -325,17 +324,18 @@ class VoteFetcher(RPCBase):
             "votes": votes
         }
 
-    def update_for_reward_calculation(self, address: str = None):
-        if address is not None and address not in self.__votes.keys():
-            self.__votes[address] = Votes(address)
+    def votes_for_voter_reward(self, address: str) -> Votes:
+        votes = self.__votes.get(address, Votes(address))
 
-        for owner, votes in self.__votes.items():
-            bond = self.call(method="getBond", params={"address": owner}, height=self.__start_height)
-            delegation = self.call(method="getDelegation", params={"address": owner}, height=self.__start_height)
-            votes.set_prev_votes(
-                prev_bond=Vote.from_get_bond(owner, bond),
-                prev_delegation=Vote.from_get_delegation(owner, delegation),
-            )
+        bond = self.call(method="getBond", params={"address": address}, height=self.__start_height)
+        delegation = self.call(method="getDelegation", params={"address": address}, height=self.__start_height)
+        votes.set_prev_votes(
+            prev_bond=Vote.from_get_bond(address, bond),
+            prev_delegation=Vote.from_get_delegation(address, delegation),
+        )
+
+        self.__votes[address] = votes
+        return votes
 
     def _print_progress(self, height: int, fp=None):
         if fp is None:

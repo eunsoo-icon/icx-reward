@@ -111,7 +111,6 @@ def check(args: dict, rpc: RPC):
     else:
         print(f"## Import votes from {import_fp.name}")
         vf.import_from_file(import_fp)
-    vf.update_for_reward_calculation(address)
 
     print()
 
@@ -124,7 +123,7 @@ def check(args: dict, rpc: RPC):
     print()
 
     # voter reward
-    voter = Voter(address, vf.votes.get(address, None), pc.start_height, pc.offset_limit(), pc.preps, sys.stdout)
+    voter = Voter(address, vf.votes_for_voter_reward(address), pc.start_height, pc.offset_limit(), pc.preps, sys.stdout)
     voter.update_accumulated_vote()
     voter.calculate()
 
