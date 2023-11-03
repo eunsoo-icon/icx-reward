@@ -18,7 +18,7 @@ def add_uri(subparser):
 
 
 def add_address(subparser, required: bool = True):
-    subparser.add_argument("--address", type=IconAddress(), help="address of account", required=required)
+    subparser.add_argument("--address", type=IconAddress(), help="address of account", required=required, default=None)
 
 
 def add_address_optional(subparser):

@@ -4,6 +4,7 @@ from iconsdk.builder.call_builder import CallBuilder
 from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
 
+from icx_reward.types.address import Address
 from icx_reward.types.constants import SYSTEM_ADDRESS
 from icx_reward.types.prep import PRep
 
@@ -58,11 +59,11 @@ class RPC(RPCBase):
             height=height,
         )
 
-    def get_prep(self, address: str, height: int = None, to_obj: bool = False) -> Union[dict, PRep]:
+    def get_prep(self, address: Union[str, Address], height: int = None, to_obj: bool = False) -> Union[dict, PRep]:
         resp = self.call(
             to=SYSTEM_ADDRESS,
             method="getPRep",
-            params={"address": address},
+            params={"address": address if isinstance(address, str) else str(address)},
             height=height,
         )
         if to_obj:
@@ -70,18 +71,18 @@ class RPC(RPCBase):
         else:
             return resp
 
-    def get_bond(self, address: str, height: int = None):
+    def get_bond(self, address: Union[str, Address], height: int = None):
         return self.call(
             to=SYSTEM_ADDRESS,
             method="getBond",
-            params={"address": address},
+            params={"address": address if isinstance(address, str) else str(address)},
             height=height,
         )
 
-    def get_delegation(self, address: str, height: int = None):
+    def get_delegation(self, address: [str, Address], height: int = None):
         return self.call(
             to=SYSTEM_ADDRESS,
             method="getDelegation",
-            params={"address": address},
+            params={"address": address if isinstance(address, str) else str(address)},
             height=height,
         )

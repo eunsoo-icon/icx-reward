@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import sys
 from copy import deepcopy
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from iconsdk.monitor import EventFilter, EventMonitorSpec
 from iconsdk.providers.provider import MonitorTimeoutException
 
-from icx_reward.rpc import RPC
+from icx_reward.rpc import RPC, RPCBase
 from icx_reward.types.address import Address
 from icx_reward.types.bloom import get_bloom_data, get_score_address_bloom_data
 from icx_reward.types.constants import SYSTEM_ADDRESS
@@ -137,6 +137,8 @@ class Votes:
         self.__owner = owner
         self.__bonds: List[Vote] = []
         self.__delegations: List[Vote] = []
+        self.__prev_bond: Optional[Vote] = None
+        self.__prev_delegation: Optional[Vote] = None
 
     def __repr__(self):
         return f"Votes('owner': '{self.__owner}', 'bonds': {self.__bonds}, 'delegations': {self.__delegations})"
@@ -159,14 +161,18 @@ class Votes:
         else:
             self.__delegations.append(vote)
 
-    def _vote_values_for_prep(self, rpc: RPC, votes: List[Vote], prep: str, start_height: int,
-                              offset_limit: int) -> int:
+    def set_prev_votes(self, prev_bond: Vote, prev_delegation: Vote):
+        self.__prev_bond = prev_bond
+        self.__prev_delegation = prev_delegation
+
+    def _accumulated_vote_for_prep(self, votes: List[Vote], prep: str, start_height: int,
+                                   offset_limit: int) -> int:
         if len(votes) == 0:
             return 0
         if votes[0].type == Vote.TYPE_BOND:
-            prev = Vote.from_get_bond(self.__owner, rpc.get_bond(self.__owner, start_height))
+            prev = self.__prev_bond
         else:
-            prev = Vote.from_get_delegation(self.__owner, rpc.get_delegation(self.__owner, start_height))
+            prev = self.__prev_delegation
         accum_value = 0
         for vote in votes:
             diff = vote.diff(prev)
@@ -176,9 +182,40 @@ class Votes:
             prev = vote
         return accum_value
 
-    def accumulated_values_for_prep(self, rpc: RPC, prep: str, start_height: int, offset_limit: int) -> (int, int):
-        return (self._vote_values_for_prep(rpc, self.__bonds, prep, start_height, offset_limit),
-                self._vote_values_for_prep(rpc, self.__delegations, prep, start_height, offset_limit))
+    def accumulated_vote_for_prep(self, prep: str, start_height: int, offset_limit: int) -> (int, int):
+        return (self._accumulated_vote_for_prep(self.__bonds, prep, start_height, offset_limit),
+                self._accumulated_vote_for_prep(self.__delegations, prep, start_height, offset_limit))
+
+    @staticmethod
+    def _accumulated_votes_for_voter(start_height: int, offset_limit: int, votes: List[Vote], accum_vote: Dict[str, int]):
+        prev = None
+        for vote in votes:
+            diff = vote.diff(prev)
+            period = offset_limit - diff.offset(start_height)
+            for prep, value in diff.values.items():
+                amount = value * period
+                if prep in accum_vote.keys():
+                    accum_vote[prep] += amount
+                else:
+                    accum_vote[vote.owner] = amount
+            prev = vote
+        return accum_vote
+
+    def accumulated_votes_for_voter(self, start_height: int, offset_limit: int) -> Dict[str, int]:
+        accum_votes: Dict[str, int] = {}
+        if self.__prev_bond is None:
+            votes = self.__bonds
+        else:
+            votes = [self.__prev_bond] + self.__bonds
+        accum_votes = self._accumulated_votes_for_voter(start_height, offset_limit, votes, accum_votes)
+
+        if self.__prev_delegation is None:
+            votes = self.__delegations
+        else:
+            votes = [self.__prev_delegation] + self.__delegations
+        accum_votes = self._accumulated_votes_for_voter(start_height, offset_limit, votes, accum_votes)
+
+        return accum_votes
 
     def to_dict(self) -> dict:
         return {
@@ -194,14 +231,12 @@ class Votes:
         return votes
 
 
-class VoteFetcher:
-    def __init__(self, rpc: RPC, start_height: int, end_height: int, import_fp=None, file=None):
-        self.__rpc = rpc
-        self.__start_height = start_height
-        self.__end_height = end_height
+class VoteFetcher(RPCBase):
+    def __init__(self, uri: str):
+        super().__init__(uri)
+        self.__start_height = 0
+        self.__end_height = 0
         self.__votes: Dict[str, Votes] = {}
-        self.__import_fp = import_fp
-        self.__file = file
 
     def __repr__(self):
         return f"VoteFetcher('startHeight': {self.__start_height}, 'endHeight': {self.__end_height}, 'votes': {self.__votes}"
@@ -213,41 +248,37 @@ class VoteFetcher:
     def vote_of(self, addr: str):
         return self.__votes[addr]
 
-    def _import(self, fp):
-        self._print(f">> Import votes from file {fp.name}")
-        data = json.load(fp)
-        if self.__start_height != data["startHeight"] or self.__end_height != data["endHeight"]:
-            raise InvalidParamsException("Invalid import vote file. check startHeight and endHeight")
+    def import_from_file(self, fp):
+        self.__votes.clear()
 
+        data = json.load(fp)
+        self.__start_height = data["startHeight"]
+        self.__end_height = data["endHeight"]
         for addr, votes in data["votes"].items():
             self.__votes[addr] = Votes.from_dict(addr, votes)
 
-    def run(self):
+    @staticmethod
+    def _event_filter(address: str = None) -> List[EventFilter]:
+        if address is None:
+            return [
+                EventFilter(event=EventSig.SetBond, addr=SYSTEM_ADDRESS, indexed=0),
+                EventFilter(event=EventSig.SetDelegation, addr=SYSTEM_ADDRESS, indexed=0),
+            ]
+        else:
+            return [
+                EventFilter(EventSig.SetBond, SYSTEM_ADDRESS, 1, address),
+                EventFilter(EventSig.SetDelegation, SYSTEM_ADDRESS, 1, address),
+            ]
+
+    def fetch(self, start_height: int, end_height: int, address: str = None, fp=None):
         self.__votes.clear()
+        self.__start_height = start_height
+        self.__end_height = end_height
 
-        if self.__import_fp is not None:
-            self._import(self.__import_fp)
-            return
-
-        self._print(f">> Fetch votes from {self.__start_height} to {self.__end_height}")
-        self._fetch_via_websocket()
-
-    def _fetch_via_websocket(self):
-        monitor = self.__rpc.sdk.monitor(
+        monitor = self.sdk.monitor(
             spec=EventMonitorSpec(
-                height=self.__start_height + 1,
-                filters=[
-                    EventFilter(
-                        event=EventSig.SetDelegation,
-                        addr=SYSTEM_ADDRESS,
-                        indexed=0,
-                    ),
-                    EventFilter(
-                        event=EventSig.SetBond,
-                        addr=SYSTEM_ADDRESS,
-                        indexed=0,
-                    ),
-                ],
+                height=start_height + 1,
+                filters=self._event_filter(address),
                 logs=True,
                 progress_interval=1000,
             ),
@@ -259,15 +290,15 @@ class VoteFetcher:
             except MonitorTimeoutException:
                 break
             height = int(data.get("height", data.get("progress")), 16) - 1
-            if height > self.__end_height:
-                self._print_progress(height)
+            if height > end_height:
+                self._print_progress(height, fp)
                 break
-            self._print_progress(height)
+            self._print_progress(height, fp)
             if "progress" in data.keys():
                 continue
-            self.update_votes([Vote.from_event(height, Event.from_dict(d)) for d in data["logs"]])
+            self._update_votes([Vote.from_event(height, Event.from_dict(d)) for d in data["logs"]])
 
-    def update_votes(self, votes: List[Vote]):
+    def _update_votes(self, votes: List[Vote]):
         for vote in votes:
             key = vote.owner
             if key in self.__votes.keys():
@@ -281,7 +312,7 @@ class VoteFetcher:
         json.dump(fp=fp, obj=self.to_dict(), indent=2)
 
     def print_result(self):
-        pprint(self.to_dict(), file=self.__file)
+        pprint(self.to_dict(), file=sys.stdout)
 
     def to_dict(self):
         votes = {}
@@ -294,12 +325,20 @@ class VoteFetcher:
             "votes": votes
         }
 
-    def _print(self, msg):
-        if self.__file is not None:
-            print(msg, file=self.__file)
+    def update_for_reward_calculation(self, address: str = None):
+        if address is not None and address not in self.__votes.keys():
+            self.__votes[address] = Votes(address)
 
-    def _print_progress(self, height: int):
-        if self.__file is None or self.__file != sys.stdout:
+        for owner, votes in self.__votes.items():
+            bond = self.call(method="getBond", params={"address": owner}, height=self.__start_height)
+            delegation = self.call(method="getDelegation", params={"address": owner}, height=self.__start_height)
+            votes.set_prev_votes(
+                prev_bond=Vote.from_get_bond(owner, bond),
+                prev_delegation=Vote.from_get_delegation(owner, delegation),
+            )
+
+    def _print_progress(self, height: int, fp=None):
+        if fp is None:
             return
         start_height = self.__start_height - 1
         if height > self.__end_height:

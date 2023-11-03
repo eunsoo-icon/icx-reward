@@ -35,6 +35,10 @@ class PRep:
     def enable(self) -> bool:
         return self.__enable
 
+    @enable.setter
+    def enable(self, value: bool):
+        self.__enable = value
+
     @property
     def address(self) -> str:
         return self.__address
@@ -75,30 +79,30 @@ class PRep:
         if self.__enable != enable:
             self.__enable = enable
 
-    def update_accumulated_values(self, rpc: RPC, votes: Dict[str, Votes], start_height: int, offset_limit: int,
-                                  br: int) -> None:
+    def update_accumulated_values(self, uri: str, votes: Dict[str, Votes], start_height: int, offset_limit: int, br: int) -> None:
+        # update bonded and voted with original
         self.__accumulated_bonded = self.__bonded * (offset_limit + 1)
         self.__accumulated_voted = (self.__bonded + self.__delegated) * (offset_limit + 1)
-        self._update_accumulated_values_with_votes(rpc, votes, start_height, offset_limit)
-        self._update_accumulated_values_with_slash(rpc, start_height, start_height + offset_limit)
+        # update bonded and voted with new votes
+        self._update_accumulated_values_with_votes(votes, start_height, offset_limit)
+        # update bonded and voted with slash
+        self._update_accumulated_values_with_slash(uri, start_height, start_height + offset_limit)
+        # calculate accumulated power
         self.__accumulated_power = min(self.__accumulated_bonded * RATE_DENOM // br, self.__accumulated_voted)
 
-    def _update_accumulated_values_with_votes(self, rpc: RPC, votes: Dict[str, Votes], start_height: int,
-                                              offset_limit: int):
-        for v in votes.values():
-            accum_bonded, accum_delegated = v.accumulated_values_for_prep(rpc, self.__address, start_height,
-                                                                          offset_limit)
+    def _update_accumulated_values_with_votes(self, votes: Dict[str, Votes], start_height: int, offset_limit: int):
+        for k, v in votes.items():
+            accum_bonded, accum_delegated = v.accumulated_vote_for_prep(self.__address, start_height, offset_limit)
             self.__accumulated_bonded += accum_bonded
             self.__accumulated_voted += accum_bonded + accum_delegated
 
-    def _update_accumulated_values_with_slash(self, rpc: RPC, start_height: int, end_height: int):
-        if not self.__enable:
-            pf = PenaltyFetcher(rpc.uri)
-            self.__penalties = pf.run(start_height, end_height, self.__address)
-            for penalty in self.__penalties.values():
-                amount = penalty.accumulated_slash_amount(end_height)
-                self.__accumulated_bonded -= amount
-                self.__accumulated_voted -= amount
+    def _update_accumulated_values_with_slash(self, uri: str, start_height: int, end_height: int):
+        pf = PenaltyFetcher(uri)
+        self.__penalties = pf.run(start_height, end_height, self.__address)
+        for penalty in self.__penalties.values():
+            amount = penalty.accumulated_slash_amount(end_height)
+            self.__accumulated_bonded -= amount
+            self.__accumulated_voted -= amount
 
     def calculate_reward(self, total_prep_reward: int, total_accum_power: int, wage: int, min_bond: int):
         if self.rewardable():
@@ -144,20 +148,13 @@ class Voter:
     def reward(self) -> int:
         return self.__reward
 
-    def _update_accumulated_vote_with_votes(self, votes: List[Vote]):
-        for i, vote in enumerate(votes):
-            if i == 0:
-                prev = None
+    def _update_accumulated_vote_with_votes(self):
+        accum_vote = self.__votes.accumulated_votes_for_voter(self.__start_height, self.__offset_limit)
+        for addr, amount in accum_vote.items():
+            if addr in self.__accum_vote.keys():
+                self.__accum_vote[addr] += amount
             else:
-                prev = votes[i - 1]
-            diff = vote.diff(prev)
-            period = self.__offset_limit - diff.offset(self.__start_height)
-            for addr, value in diff.values.items():
-                amount = value * period
-                if addr in self.__accum_vote.keys():
-                    self.__accum_vote[addr] += amount
-                else:
-                    self.__accum_vote[addr] = amount
+                self.__accum_vote[addr] = amount
 
     def _update_accumulated_vote_with_slash(self):
         for prep in self.__preps.values():
@@ -171,19 +168,8 @@ class Voter:
                 else:
                     self.__accum_vote[prep.address] = -amount
 
-    def update_accumulated_vote(self, rpc: RPC):
-        # original vote
-        bonds = [Vote.from_get_bond(self.__address, rpc.get_bond(self.__address, self.__start_height))]
-        delegations = [Vote.from_get_delegation(self.__address, rpc.get_delegation(self.__address, self.__start_height))]
-        # new votes
-        if self.__votes is not None:
-            bonds.extend(self.__votes.bonds)
-            delegations.extend(self.__votes.delegations)
-
-        self._update_accumulated_vote_with_votes(bonds)
-        self._update_accumulated_vote_with_votes(delegations)
-
-        # slash event
+    def update_accumulated_vote(self):
+        self._update_accumulated_vote_with_votes()
         self._update_accumulated_vote_with_slash()
 
     def calculate(self):
@@ -209,9 +195,9 @@ class Voter:
             print(msg, file=self.__file)
 
 
-class PRepCalculator:
-    def __init__(self, start: int, end: int, br: int, validator_count: int, min_bond: int, preps: dict,
-                 iglobal: int, iprep: int, iwage: int, fp=sys.stdout):
+class PRepRewardCalculator:
+    def __init__(self, uri: str, start: int, end: int, br: int, validator_count: int, min_bond: int, preps: dict,
+                 iglobal: int, iprep: int, iwage: int):
         self.__start_height: int = start
         self.__end_height: int = end
         self.__br: int = br
@@ -223,7 +209,7 @@ class PRepCalculator:
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
 
-        self.__file = fp
+        self.__rpc = RPC(uri)
 
     @staticmethod
     def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
@@ -232,6 +218,10 @@ class PRepCalculator:
     @property
     def start_height(self) -> int:
         return self.__start_height
+
+    @property
+    def end_height(self) -> int:
+        return self.__end_height
 
     def period(self) -> int:
         return self.__end_height + 1 - self.__start_height
@@ -268,23 +258,21 @@ class PRepCalculator:
     def total_accumulated_power(self) -> int:
         return self.__total_accumulated_power
 
-    def set_file(self, file):
-        self.__file = file
-
     def get_prep(self, addr: str) -> Optional[PRep]:
         if addr not in self.__preps.keys():
             return None
         else:
             return self.__preps[addr]
 
-    def update_enables(self, rpc: RPC):
+    def update_enables(self):
         for prep in self.__preps.values():
-            prep.update_enable(rpc, self.__end_height)
+            resp: PRepResp = self.__rpc.get_prep(prep.address, self.__end_height, to_obj=True)
+            prep.enable = not resp.in_jail()
 
-    def update_accumulated_values(self, rpc: RPC, votes: Dict[str, Votes]) -> None:
+    def update_accumulated_values(self, votes: Dict[str, Votes]) -> None:
         total_power = 0
         for k, prep in self.__preps.items():
-            prep.update_accumulated_values(rpc, votes, self.__start_height, self.offset_limit(), self.__br)
+            prep.update_accumulated_values(self.__rpc.uri, votes, self.__start_height, self.offset_limit(), self.__br)
             self.__preps[k] = prep
             total_power += prep.accumulated_power
         self.__total_accumulated_power = total_power
@@ -300,34 +288,32 @@ class PRepCalculator:
             )
             self.__preps[k] = prep
 
-    def run(self, rpc: RPC, votes: Dict[str, Votes]):
-        self._print(f">> Calculate reward of elected PReps from {self.__start_height} to {self.__end_height}")
-        self.update_enables(rpc)
-        self.update_accumulated_values(rpc, votes)
+    def run(self, votes: Dict[str, Votes]):
+        self.update_enables()
+        self.update_accumulated_values(votes)
         self.calculate_reward()
 
     def print_summary(self, file=sys.stdout):
-        self._print(f"<< PRep reward summary", file)
-        self._print(f"Total PRep reward: {self.__total_prep_reward}, Total wage: {self.__total_wage}", file)
-        self._print(f"Total accumulated power: {self.__total_accumulated_power}", file)
-        self._print(f"Elected PReps", file)
+        print(f"<< PRep reward summary", file=file)
+        print(f"Total PRep reward: {self.__total_prep_reward}, Total wage: {self.__total_wage}", file=file)
+        print(f"Total accumulated power: {self.__total_accumulated_power}", file=file)
+        print(f"Elected PReps", file=file)
         for i, prep in enumerate(self.__preps.values()):
-            self._print(f"\t#{i}: {prep}", file)
-
-    def _print(self, msg, file=None):
-        if file is not None:
-            print(msg, file=file)
-        elif self.__file is not None:
-            print(msg, file=self.__file)
+            print(f"\t#{i}: {prep}", file=file)
 
     @staticmethod
-    def from_term(term: dict) -> PRepCalculator:
+    def from_network(uri: str, height: int) -> PRepRewardCalculator:
+        return PRepRewardCalculator.from_term(uri, RPC(uri).term(height))
+
+    @staticmethod
+    def from_term(uri: str, term: dict) -> PRepRewardCalculator:
         preps: Dict[str, PRep] = {}
         for p in term["preps"]:
             prep = PRep.from_get_prep(p)
             preps[prep.address] = prep
 
-        return PRepCalculator(
+        return PRepRewardCalculator(
+            uri=uri,
             start=int(term["startBlockHeight"], 0),
             end=int(term["endBlockHeight"], 0),
             br=int(term["bondRequirement"], 0),
