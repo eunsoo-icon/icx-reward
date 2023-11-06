@@ -244,8 +244,8 @@ class VoteFetcher(RPCBase):
     def votes(self) -> Dict[str, Votes]:
         return self.__votes
 
-    def vote_of(self, addr: str):
-        return self.__votes[addr]
+    def votes_of(self, addr: str) -> Votes:
+        return self.__votes.get(addr, None)
 
     def import_from_file(self, fp):
         self.__votes.clear()
@@ -287,6 +287,7 @@ class VoteFetcher(RPCBase):
             try:
                 data = monitor.read(timeout=5)
             except MonitorTimeoutException:
+                self._print_progress(self.__end_height, fp)
                 break
             height = int(data.get("height", data.get("progress")), 16) - 1
             if height > end_height:
@@ -296,6 +297,8 @@ class VoteFetcher(RPCBase):
             if "progress" in data.keys():
                 continue
             self._update_votes([Vote.from_event(height, Event.from_dict(d)) for d in data["logs"]])
+
+        monitor.close()
 
     def _update_votes(self, votes: List[Vote]):
         for vote in votes:
@@ -324,17 +327,21 @@ class VoteFetcher(RPCBase):
             "votes": votes
         }
 
+    def update_votes_for_reward(self):
+        for address, votes in self.__votes.items():
+            self.__votes[address] = self._set_prev_votes(address, votes)
+
     def votes_for_voter_reward(self, address: str) -> Votes:
         votes = self.__votes.get(address, Votes(address))
+        return self._set_prev_votes(address, votes)
 
+    def _set_prev_votes(self, address: str, votes: Votes) -> Votes:
         bond = self.call(method="getBond", params={"address": address}, height=self.__start_height)
         delegation = self.call(method="getDelegation", params={"address": address}, height=self.__start_height)
         votes.set_prev_votes(
             prev_bond=Vote.from_get_bond(address, bond),
             prev_delegation=Vote.from_get_delegation(address, delegation),
         )
-
-        self.__votes[address] = votes
         return votes
 
     def _print_progress(self, height: int, fp=None):
