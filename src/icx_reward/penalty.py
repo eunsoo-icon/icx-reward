@@ -82,6 +82,8 @@ class PenaltyFetcher(RPCBase):
             try:
                 data = monitor.read(timeout=5)
             except MonitorTimeoutException:
+                if progress:
+                    self._print_progress(end_height, start_height, end_height)
                 break
             height = int(data.get("height", data.get("progress")), 16) - 1
             if height > end_height:
@@ -93,6 +95,8 @@ class PenaltyFetcher(RPCBase):
             if "progress" in data.keys():
                 continue
             penalties[height] = Penalty(height=height, events=[Event.from_dict(log) for log in data["logs"]])
+
+        monitor.close()
 
         return penalties
 
