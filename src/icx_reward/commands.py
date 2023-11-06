@@ -3,7 +3,7 @@ from functools import wraps
 
 from icx_reward.penalty import PenaltyFetcher
 from icx_reward.rpc import RPC
-from icx_reward.reward import PRepRewardCalculator, Voter
+from icx_reward.reward import PRepReward, Voter
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
@@ -111,25 +111,25 @@ def check(args: dict, rpc: RPC):
     else:
         print(f"## Import votes from {import_fp.name}")
         vf.import_from_file(import_fp)
+    vf.update_votes_for_reward()
 
     print()
 
     # prep reward
-    pc = PRepRewardCalculator.from_network(uri, event_start_height)
-    print(f"## Calculate reward of elected PReps from {pc.start_height} to {pc.end_height}")
-    pc.run(vf.votes)
-    pc.print_summary()
+    pr = PRepReward.from_network(uri, event_start_height)
+    print(f"## Calculate reward of elected PReps from {pr.start_height} to {pr.end_height}")
+    pr.calculate(vf.votes)
+    pr.print_summary()
 
     print()
 
     # voter reward
-    voter = Voter(address, vf.votes_for_voter_reward(address), pc.start_height, pc.offset_limit(), pc.preps, sys.stdout)
-    voter.update_accumulated_vote()
+    voter = Voter(address, vf.votes_for_voter_reward(address), pr.start_height, pr.offset_limit(), pr.preps, sys.stdout)
     voter.calculate()
 
     print()
 
-    prep = pc.get_prep(address)
+    prep = pr.get_prep(address)
     reward = (0 if prep is None else prep.reward()) + voter.reward
     print(f"## Calculated reward: {reward}")
     print(f"\t= PRep.commission + PRep.wage + Voter.reward")
