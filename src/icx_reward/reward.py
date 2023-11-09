@@ -333,5 +333,5 @@ class PRepReward:
             iglobal=int(term["rewardFund"]["Iglobal"], 0),
             iprep=int(term["rewardFund"]["Iprep"], 0),
             iwage=int(term["rewardFund"].get("Iwage", "0x0"), 0),
-            min_bond=int(term.get("minBond", "0x0"), 0),
+            min_bond=int(term.get("minimumBond", "0x0"), 0),
         )
