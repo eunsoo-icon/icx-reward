@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "icx_reward"
 version = "0.2.1"
 authors = [
-    { name = "Park Eunsoo", email = "eunsoo.park@gmail.com" },
+    { name = "ICON Foundation", email = "foo@icon.foundation" },
 ]
 description = "Tools for ICON reward"
 readme = "README.md"
