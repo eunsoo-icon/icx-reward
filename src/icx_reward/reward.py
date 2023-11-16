@@ -11,14 +11,14 @@ from icx_reward.vote import Vote, Votes
 
 
 class PRep:
-    def __init__(self, enable: bool, address: str, bonded: int, delegated: int, commission_rate: int):
+    def __init__(self, enable: bool, address: str, bonded: int, delegated: int, power: int, commission_rate: int):
         self.__enable = enable
         self.__address = address
         self.__bonded = bonded
         self.__delegated = delegated
+        self.__power: int = power
         self.__commission_rate = commission_rate
 
-        self.__accumulated_bonded: int = 0
         self.__accumulated_voted: int = 0
         self.__accumulated_power: int = 0
         self.__commission: int = 0
@@ -73,6 +73,10 @@ class PRep:
     def reward(self) -> int:
         return self.__commission + self.__wage
 
+    def init_accumulated_values(self, period: int):
+        self.__accumulated_voted = (self.__bonded + self.__delegated) * period
+        self.__accumulated_power = self.__power * period
+
     def update_enable(self, uri: str, end_height: int):
         prep: PRepResp = RPC(uri).get_prep(self.address, end_height, to_obj=True)
         self.__enable = not prep.in_jail()
@@ -81,28 +85,17 @@ class PRep:
         pf = PenaltyFetcher(uri)
         self.__penalties = pf.run(start_height, end_height, self.__address)
 
-    def update_accumulated_values(self, votes: Dict[str, Votes], start_height: int, offset_limit: int, br: int) -> None:
-        # update bonded and voted with original
-        self.__accumulated_bonded = self.__bonded * (offset_limit + 1)
-        self.__accumulated_voted = (self.__bonded + self.__delegated) * (offset_limit + 1)
-        # update bonded and voted with new votes
-        self._update_accumulated_values_with_votes(votes, start_height, offset_limit)
-        # update bonded and voted with slash
-        self._update_accumulated_values_with_slash(start_height + offset_limit)
-        # calculate accumulated power
-        self.__accumulated_power = min(self.__accumulated_bonded * RATE_DENOM // br, self.__accumulated_voted)
+    def apply_vote_diff(self, type_: int, value: int, period: int, br: int):
+        if type_ == Vote.TYPE_BOND:
+            self.__bonded += value
+        else:
+            self.__delegated += value
+        self.__accumulated_voted += value * period
 
-    def _update_accumulated_values_with_votes(self, votes: Dict[str, Votes], start_height: int, offset_limit: int):
-        for k, v in votes.items():
-            accum_bonded, accum_delegated = v.accumulated_vote_for_prep(self.__address, start_height, offset_limit)
-            self.__accumulated_bonded += accum_bonded
-            self.__accumulated_voted += accum_bonded + accum_delegated
-
-    def _update_accumulated_values_with_slash(self, end_height: int):
-        for penalty in self.__penalties.values():
-            amount = penalty.accumulated_slash_amount(end_height)
-            self.__accumulated_bonded -= amount
-            self.__accumulated_voted -= amount
+        power = min(self.__bonded * RATE_DENOM // br, self.__bonded + self.__delegated)
+        power_diff = power - self.__power
+        self.__power = power
+        self.__accumulated_power += power_diff * period
 
     def calculate_reward(self, total_prep_reward: int, total_accum_power: int, wage: int, min_bond: int):
         if self.rewardable():
@@ -115,14 +108,21 @@ class PRep:
     def voter_reward_for(self, accumulated_vote: int) -> int:
         return self.__voter_reward * accumulated_vote // self.__accumulated_voted
 
+    def penalties_to_vote_diff_list(self) -> List[Vote]:
+        diff: List[Vote] = []
+        for penalty in self.__penalties.values():
+            diff.extend(penalty.slash_event_to_vote_diff_list())
+        return diff
+
     @staticmethod
     def from_get_prep(prep: dict) -> PRep:
         return PRep(
             enable=not JailInfo.from_dict(prep).in_jail(),
             address=prep["address"],
-            bonded=int(prep["bonded"], 0),
-            delegated=int(prep["delegated"], 0),
-            commission_rate=int(prep.get("commissionRate", "0x0"), 0),
+            bonded=int(prep["bonded"], 16),
+            delegated=int(prep["delegated"], 16),
+            power=int(prep["power"], 16),
+            commission_rate=int(prep.get("commissionRate", "0x0"), 16),
         )
 
 
@@ -148,18 +148,18 @@ class Voter:
     def reward(self) -> int:
         return self.__reward
 
-    def _update_accumulated_vote_with_votes(self):
+    def _update_accumulated_votes_with_votes(self):
         if self.__votes is None:
-            accum_vote = {}
+            accum_votes = {}
         else:
-            accum_vote = self.__votes.accumulated_votes_for_voter(self.__start_height, self.__offset_limit)
-        for addr, amount in accum_vote.items():
+            accum_votes = self.__votes.accumulated_votes_for_voter(self.__start_height, self.__offset_limit)
+        for addr, amount in accum_votes.items():
             if addr in self.__accum_votes.keys():
                 self.__accum_votes[addr] += amount
             else:
                 self.__accum_votes[addr] = amount
 
-    def _update_accumulated_vote_with_slash(self):
+    def _update_accumulated_votes_with_slash(self):
         for prep in self.__preps.values():
             if prep.enable:
                 continue
@@ -173,8 +173,8 @@ class Voter:
 
     def calculate_accumulated_vote(self):
         self.__accum_votes.clear()
-        self._update_accumulated_vote_with_votes()
-        self._update_accumulated_vote_with_slash()
+        self._update_accumulated_votes_with_votes()
+        self._update_accumulated_votes_with_slash()
 
     def calculate_reward(self):
         self._print(
@@ -271,6 +271,10 @@ class PRepReward:
         else:
             return self.__preps[addr]
 
+    def init_accumulated_values(self):
+        for prep in self.__preps.values():
+            prep.init_accumulated_values(self.period())
+
     def update_enables(self):
         for prep in self.__preps.values():
             prep.update_enable(self.__rpc.uri, self.__end_height)
@@ -279,13 +283,30 @@ class PRepReward:
         for prep in self.__preps.values():
             prep.update_penalty(self.__rpc.uri, self.__start_height, self.__end_height)
 
-    def calculate_accumulated_values(self, votes: Dict[str, Votes]) -> None:
-        total_power = 0
-        for k, prep in self.__preps.items():
-            prep.update_accumulated_values(votes, self.__start_height, self.offset_limit(), self.__br)
-            self.__preps[k] = prep
-            total_power += prep.accumulated_power
-        self.__total_accumulated_power = total_power
+    def apply_votes(self, votes: Dict[str, Votes]) -> None:
+        # merge setBond, setDelegation and slash event
+        vote_diff_list: List[Vote] = []
+        for v in votes.values():
+            vote_diff_list.extend(v.to_vote_diff_list())
+        for prep in self.__preps.values():
+            vote_diff_list.extend(prep.penalties_to_vote_diff_list())
+        vote_diff_list.sort(key=lambda x: x.height)
+
+        preps_addr = self.__preps.keys()
+        # update accumulated value in PRep
+        for vote in vote_diff_list:
+            for to, value in vote.values.items():
+                if to not in preps_addr:
+                    continue
+                prep = self.__preps[to]
+                prep.apply_vote_diff(vote.type, value, self.offset_limit() - vote.offset(self.__start_height), self.__br)
+                self.__preps[to] = prep
+
+        # update total_accumulated_power
+        total_accum_power = 0
+        for prep in self.__preps.values():
+            total_accum_power += prep.accumulated_power
+        self.__total_accumulated_power = total_accum_power
 
     def calculate_reward(self) -> None:
         wage = self.__total_wage // len(self.__preps)
@@ -299,9 +320,10 @@ class PRepReward:
             self.__preps[k] = prep
 
     def calculate(self, votes: Dict[str, Votes]):
+        self.init_accumulated_values()
         self.update_enables()
         self.update_penalties()
-        self.calculate_accumulated_values(votes)
+        self.apply_votes(votes)
         self.calculate_reward()
 
     def print_summary(self, file=sys.stdout):

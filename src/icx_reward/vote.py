@@ -88,7 +88,7 @@ class Vote:
         return v
 
     @staticmethod
-    def from_event(offset: int, event: Event) -> Vote:
+    def from_event(height: int, event: Event) -> Vote:
         if event.score_address != SYSTEM_ADDRESS:
             raise InvalidParamsException(f"invalid scoreAddress {event.score_address}")
         if event.signature not in EventSig.VOTE_SIG_LIST:
@@ -105,7 +105,7 @@ class Vote:
         return Vote(
             owner=voter,
             _type=Vote.TYPE_BOND if event.signature == EventSig.SetBond else Vote.TYPE_DELEGATE,
-            height=offset,
+            height=height,
             values=data,
         )
 
@@ -129,6 +129,23 @@ class Vote:
             owner=owner,
             _type=Vote.TYPE_DELEGATE,
             values=values,
+        )
+
+    @staticmethod
+    def from_slash_event(height, event: Event) -> Vote:
+        if event.score_address != SYSTEM_ADDRESS:
+            raise InvalidParamsException(f"invalid scoreAddress {event.score_address}")
+        if event.signature != EventSig.Slash:
+            raise InvalidParamsException(f"invalid signature {event.signature}")
+        to = event.indexed[1]
+        voter = event.data[0]
+        value = -int(event.data[1], 16)
+
+        return Vote(
+            owner=voter,
+            _type=Vote.TYPE_BOND,
+            height=height,
+            values={to: value},
         )
 
 
@@ -165,8 +182,7 @@ class Votes:
         self.__prev_bond = prev_bond
         self.__prev_delegation = prev_delegation
 
-    def _accumulated_vote_for_prep(self, votes: List[Vote], prep: str, start_height: int,
-                                   offset_limit: int) -> int:
+    def _accumulated_vote_for_prep(self, votes: List[Vote], prep: str, start_height: int, offset_limit: int) -> int:
         if len(votes) == 0:
             return 0
         if votes[0].type == Vote.TYPE_BOND:
@@ -228,6 +244,23 @@ class Votes:
         for d in value["bonds"] + value["delegations"]:
             votes.append_vote(Vote.from_dict(d))
         return votes
+
+    def to_vote_list(self) -> List[Vote]:
+        return sorted(self.__bonds + self.__delegations, key=lambda x: x.height)
+
+    def to_vote_diff_list(self) -> List[Vote]:
+        vote_diff_list: List[Vote] = []
+        prev = self.__prev_bond
+        for d in self.__bonds:
+            vote_diff_list.append(d.diff(prev))
+            prev = d
+
+        prev = self.__prev_delegation
+        for d in self.__delegations:
+            vote_diff_list.append(d.diff(prev))
+            prev = d
+
+        return sorted(vote_diff_list, key=lambda x: x.height)
 
 
 class VoteFetcher(RPCBase):

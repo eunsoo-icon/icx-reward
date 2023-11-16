@@ -10,6 +10,7 @@ from icx_reward.types.event import Event, EventSig
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import PRep
 from icx_reward.utils import print_progress
+from icx_reward.vote import Vote
 
 
 class Penalty:
@@ -28,6 +29,14 @@ class Penalty:
                 if bonder_address is None or event.data[0] == bonder_address:
                     amount += int(event.data[1], 16) * period
         return amount
+
+    def slash_event_to_vote_diff_list(self) -> List[Vote]:
+        vote_list = []
+        for event in self.__events:
+            if event.indexed[0] == EventSig.Slash and len(event.data) == 2:
+                vote_list.append(Vote.from_slash_event(self.__height, event))
+        print(f"slash_evnet_to_vote_diff_list {vote_list}")
+        return vote_list
 
 
 class PenaltyFetcher(RPCBase):
