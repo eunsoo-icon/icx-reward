@@ -9,51 +9,62 @@ from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
 
 
-def use_rpc(f):
-    @wraps(f)
-    def wrapper(args):
-        return f(args, RPC(args["uri"]))
-
-    return wrapper
-
-
-def use_term_info(f):
+def time_info(f):
     @wraps(f)
     def wrapper(args):
         rpc = RPC(args["uri"])
-        resp = rpc.term(args.get("height", None))
-        start_height = int(resp["startBlockHeight"], 16)
-        end_height = int(resp["endBlockHeight"], 16)
-        last_height = rpc.sdk.get_block("latest")["height"]
-        if last_height < end_height:
-            end_height = last_height
-        return f(args, resp, start_height, end_height)
+        height = args.get("height", None)
+        seq_in = args.get("term", None)
+        term_ = rpc.term()
+        if height is not None:
+            term_ = rpc.term(height=height)
+        elif seq_in is not None:
+            seq_last = int(term_["sequence"], 16)
+            if seq_in > seq_last:
+                raise InvalidParamsException(f"Too big Term sequence {seq_in}")
+            elif seq_in == seq_last:
+                height = int(term_["startBlockHeight"], 16)
+            else:
+                if seq_in < 0:
+                    diff = -seq_in
+                else:
+                    diff = seq_last - seq_in
+                period = int(term_["period"], 16)
+                start_height = int(term_["startBlockHeight"], 16)
+                height = start_height - period * diff
+                print(f"in {seq_in} diff {diff} height {height}")
+                term_ = rpc.term(height=height)
+        else:
+            height = int(term_["startBlockHeight"], 16)
+
+        return f(args, height, term_)
 
     return wrapper
 
 
-@use_rpc
-def query(args: dict, rpc: RPC):
+@time_info
+def query(args: dict, height: int, term_: dict):
+    rpc = RPC(args["uri"])
     resp = rpc.query_iscore(
         address=args["address"],
-        height=args.get("height", None),
+        height=height,
     )
     pprint(resp)
 
 
-@use_rpc
-def term(args: dict, rpc: RPC):
-    resp = rpc.term(height=args.get("height", None))
-    pprint(resp)
+@time_info
+def term(args: dict, height: int, term_: dict):
+    pprint(term_)
 
 
-@use_rpc
-def fetch_vote(args: dict, rpc: RPC):
+@time_info
+def fetch_vote(args: dict, height: int, term_: dict):
     uri = args["uri"]
     export_fp = args.get("export")
     address = args["address"]
-    resp, start_height, end_height = get_term_height(rpc, height=args.get("height", None))
-    iiss_version = int(resp["iissVersion"], 16)
+    start_height = int(term_["startBlockHeight"], 16)
+    end_height = int(term_["endBlockHeight"], 16)
+    iiss_version = int(term_["iissVersion"], 16)
 
     if iiss_version < 4:
         pprint("Can't fetch vote. Support IISS 4 only.")
@@ -69,9 +80,11 @@ def fetch_vote(args: dict, rpc: RPC):
         vf.print_result()
 
 
-@use_term_info
-def fetch_penalty(args: dict, _term: dict, start_height: int, end_height: int):
+@time_info
+def fetch_penalty(args: dict, height: int, _term: dict):
     address = args["address"]
+    start_height = int(_term["startBlockHeight"], 16)
+    end_height = int(_term["endBlockHeight"], 16)
 
     pprint(f"## Fetch penalties of {address} from {start_height} to {end_height}")
     pf = PenaltyFetcher(args["uri"])
@@ -86,22 +99,25 @@ def fetch_penalty(args: dict, _term: dict, start_height: int, end_height: int):
         pprint(f"{penalty}")
 
 
-@use_rpc
-def check(args: dict, rpc: RPC):
+@time_info
+def check(args: dict, height: int, term_: dict):
     uri = args["uri"]
     address = args["address"]
     import_fp = args["import"]
-    height = args["height"]
-    term, start_height, end_height = get_term_height(rpc, height=height)
-    iiss_version = int(term["iissVersion"], 16)
+    start_height = int(term_["startBlockHeight"], 16)
+    end_height = int(term_["endBlockHeight"], 16)
+    iiss_version = int(term_["iissVersion"], 16)
+
     if iiss_version < 4:
         pprint("Support IISS 4 only.")
         return
-    period = int(term["period"], 16)
+
+    rpc = RPC(uri)
+    period = int(term_["period"], 16)
     event_start_height = start_height - 2 * period
     event_end_height = end_height - 2 * period
 
-    print(f"## Check reward of {address} at height {height if height is not None else 'latest'}\n")
+    print(f"## Check reward of {address} at height {height}\n")
 
     # get all vote events
     vf = VoteFetcher(uri)
@@ -143,13 +159,3 @@ def check(args: dict, rpc: RPC):
 
     if reward != iscore:
         print(f"!!!!! ERROR: Calculated and queried reward are not same. {reward} != {iscore}")
-
-
-def get_term_height(rpc: RPC, height: int = None) -> (dict, int, int):
-    resp = rpc.term(height)
-    start_height = int(resp["startBlockHeight"], 16)
-    end_height = int(resp["endBlockHeight"], 16)
-    last_height = rpc.sdk.get_block("latest")["height"]
-    if last_height < end_height:
-        end_height = last_height
-    return resp, start_height, end_height

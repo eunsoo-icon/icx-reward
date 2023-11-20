@@ -1,9 +1,10 @@
 import argparse
 import os
+import sys
 from argparse import ArgumentParser
 
 from icx_reward import commands
-from icx_reward.types.argparse_type import IconAddress, non_negative_num_type
+from icx_reward.types.argparse_type import IconAddress, non_negative_num_type, num_type
 
 
 def environ_or_required(key):
@@ -25,8 +26,10 @@ def add_address_optional(subparser):
     add_address(subparser, False)
 
 
-def add_height(subparser):
+def add_time(subparser):
     subparser.add_argument("--height", type=non_negative_num_type, default=None, help="height of block")
+    subparser.add_argument("--term", type=num_type, default=None,
+                           help="Sequence of Term. Negative value N means last + N sequence")
 
 
 def add_export_vote(subparser, required: bool = False):
@@ -43,11 +46,11 @@ parser = ArgumentParser(prog="icx-reward")
 subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
 cmds = [
-    ("query", "query I-Score of account", [add_uri, add_address, add_height]),
-    ("check", "check I-Score of account", [add_uri, add_address, add_height, add_export_vote, add_import_vote]),
-    ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_height, add_address_optional, add_export_vote]),
-    ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_height]),
-    ("term", "get Term information", [add_uri, add_height]),
+    ("check", "check I-Score of account", [add_uri, add_address, add_time, add_export_vote, add_import_vote]),
+    ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_time, add_address_optional, add_export_vote]),
+    ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_time]),
+    ("query", "query I-Score of account", [add_uri, add_address, add_time]),
+    ("term", "get Term information", [add_uri, add_time]),
 ]
 for cmd in cmds:
     p = subparsers.add_parser(cmd[0], help=cmd[1])
@@ -59,6 +62,10 @@ def run():
     args = vars(parser.parse_args())
     if not args["command"]:
         parser.error("no command given")
+
+    if args.get("height") is not None and args.get("term") is not None:
+        print(f"Do not set --height and --term together")
+        sys.exit(-1)
 
     func = getattr(commands, args["command"].replace("-", "_"))
     func(args)

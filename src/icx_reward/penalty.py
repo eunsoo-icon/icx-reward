@@ -19,7 +19,7 @@ class Penalty:
         self.__events = events
 
     def __repr__(self):
-        return f"Penalty('height': {self.__height}, 'events': {self.__events}"
+        return f"Penalty('height': {self.__height}, 'events': {self.__events})"
 
     def accumulated_slash_amount(self, end_height: int, bonder_address: str = None) -> int:
         amount = 0
