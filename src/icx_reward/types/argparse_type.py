@@ -72,7 +72,7 @@ def hash_type(string: str) -> str:
     return string
 
 
-def non_negative_num_type(string: str) -> int:
+def num_type(string: str) -> int:
     try:
         value = int(string, 10)
     except ValueError:
@@ -82,8 +82,12 @@ def non_negative_num_type(string: str) -> int:
             raise ArgumentTypeError(f"Invalid integer value '{string}'. Hexadecimal and decimal values are allowed")
     except TypeError as e:
         raise ArgumentTypeError(f'Invalid type. {e}')
+    return value
 
+
+def non_negative_num_type(string: str) -> int:
+    value = num_type(string)
     if value < 0:
         raise ArgumentTypeError(f"Invalid non-negative number '{value}'")
-
     return value
+
