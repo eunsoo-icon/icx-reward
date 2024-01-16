@@ -21,5 +21,5 @@ classifiers = [
 icx-reward = "icx_reward:cli.run"
 
 [project.urls]
-"Homepage" = "https://github.com/eunsoo-icon/icx-reward"
-"Bug Tracker" = "https://github.com/eunsoo-icon/icx-reward/issues"
+"Homepage" = "https://github.com/icon-project/icx-reward"
+"Bug Tracker" = "https://github.com/icon-project/icx-reward/issues"
