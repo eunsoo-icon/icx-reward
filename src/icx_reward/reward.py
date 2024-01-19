@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from icx_reward.penalty import Penalty, PenaltyFetcher
 from icx_reward.rpc import RPC
 from icx_reward.types.constants import ICX_TO_ISCORE_RATE, MONTH_BLOCK, RATE_DENOM
+from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import JailInfo, PRep as PRepResp
 from icx_reward.vote import Vote, Votes
 
@@ -340,6 +341,8 @@ class PRepReward:
 
     @staticmethod
     def from_term(uri: str, term: dict) -> PRepReward:
+        if term["startBlockHeight"] != term["blockHeight"]:
+            raise InvalidParamsException(f"term must be value at term start height")
         preps: Dict[str, PRep] = {}
         for p in term["preps"]:
             prep = PRep.from_get_prep(p)
