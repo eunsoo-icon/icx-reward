@@ -63,7 +63,7 @@ class Term:
             iiss_version=int(values["iissVersion"], 16),
             is_decentralized=bool(int(values["isDecentralized"], 16)),
             main_prep_count=int(values["mainPRepCount"], 16),
-            minimum_bond=int(values["minimumBond"], 16),
+            minimum_bond=int(values.get("minimumBond", "0x0"), 16),
             period=int(values["period"], 16),
             preps=[PRep.from_dict(x) for x in values["preps"]],
             revision=int(values["revision"], 16),
