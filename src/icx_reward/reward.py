@@ -82,9 +82,11 @@ class PRep:
         prep: PRepResp = RPC(uri).get_prep(self.address, end_height, to_obj=True)
         self.__enable = not prep.in_jail()
 
-    def update_penalty(self, uri: str, start_height: int, end_height: int):
-        pf = PenaltyFetcher(uri)
-        self.__penalties = pf.run(start_height, end_height, self.__address)
+    def update_penalty(self, penalties: Dict[int, Penalty]):
+        for k, v in penalties.items():
+            p = v.get_by_address(self.address)
+            if not p.is_empty():
+                self.penalties[k] = p
 
     def apply_vote_diff(self, type_: int, value: int, period: int, br: int):
         if type_ == Vote.TYPE_BOND:
@@ -280,9 +282,9 @@ class PRepReward:
         for prep in self.__preps.values():
             prep.update_enable(self.__rpc.uri, self.__end_height)
 
-    def update_penalties(self):
+    def update_penalties(self, penalties: Dict[int, Penalty]):
         for prep in self.__preps.values():
-            prep.update_penalty(self.__rpc.uri, self.__start_height, self.__end_height)
+            prep.update_penalty(penalties)
 
     def apply_votes(self, votes: Dict[str, Votes]) -> None:
         # merge setBond, setDelegation and slash event
@@ -320,10 +322,10 @@ class PRepReward:
             )
             self.__preps[k] = prep
 
-    def calculate(self, votes: Dict[str, Votes]):
+    def calculate(self, votes: Dict[str, Votes], penalties: Dict[int, Penalty]):
         self.init_accumulated_values()
         self.update_enables()
-        self.update_penalties()
+        self.update_penalties(penalties)
         self.apply_votes(votes)
         self.calculate_reward()
 

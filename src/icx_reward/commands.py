@@ -33,7 +33,6 @@ def time_info(f):
                 period = int(term_["period"], 16)
                 start_height = int(term_["startBlockHeight"], 16)
                 height = start_height - period * diff
-                print(f"in {seq_in} diff {diff} height {height}")
                 term_ = rpc.term(height=height)
         else:
             height = int(term_["startBlockHeight"], 16)
@@ -111,7 +110,7 @@ def check(args: dict, height: int, term_: dict):
     rpc = RPC(uri)
     et = Term.from_dict(rpc.term(t.start_block_height - 2 * t.period))
 
-    print(f"## Check reward of {address} at height {height}\n")
+    print(f"## Check reward of {address} at height {t.start_block_height+1}\n")
 
     # get all vote events
     vf = VoteFetcher(uri)
@@ -125,10 +124,16 @@ def check(args: dict, height: int, term_: dict):
 
     print()
 
+    print(f"## Fetch all penalties in {et.info()}")
+    pf = PenaltyFetcher(uri)
+    penalties = pf.run(et.start_block_height, et.end_block_height, progress=True)
+
+    print()
+
     # prep reward
     pr = PRepReward.from_network(uri, et.start_block_height)
     print(f"## Calculate reward of elected PReps in {et.info()}")
-    pr.calculate(vf.votes)
+    pr.calculate(vf.votes, penalties)
     pr.print_summary()
 
     print()

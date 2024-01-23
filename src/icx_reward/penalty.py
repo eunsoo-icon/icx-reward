@@ -21,6 +21,9 @@ class Penalty:
     def __repr__(self):
         return f"Penalty('height': {self.__height}, 'events': {self.__events})"
 
+    def is_empty(self):
+        return len(self.__events) == 0
+
     def accumulated_slash_amount(self, end_height: int, bonder_address: str = None) -> int:
         amount = 0
         period = end_height - self.__height
@@ -37,6 +40,13 @@ class Penalty:
                 vote_list.append(Vote.from_slash_event(self.__height, event))
         print(f"slash_evnet_to_vote_diff_list {vote_list}")
         return vote_list
+
+    def get_by_address(self, address: str) -> 'Penalty':
+        events = []
+        for event in self.__events:
+            if event.indexed[0] in (EventSig.Penalty, EventSig.Slash) and event.indexed[1] == address:
+                events.append(event)
+        return Penalty(self.__height, events)
 
 
 class PenaltyFetcher(RPCBase):
