@@ -95,7 +95,7 @@ class PRep:
             self.__delegated += value
         self.__accumulated_voted += value * period
 
-        power = min(self.__bonded * RATE_DENOM // br, self.__bonded + self.__delegated)
+        power = min(self.__bonded * 100 // br, self.__bonded + self.__delegated)
         power_diff = power - self.__power
         self.__power = power
         self.__accumulated_power += power_diff * period
