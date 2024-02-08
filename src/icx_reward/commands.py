@@ -110,7 +110,7 @@ def check(args: dict, height: int, term_: dict):
     rpc = RPC(uri)
     et = Term.from_dict(rpc.term(t.start_block_height - 2 * t.period))
 
-    print(f"## Check reward of {address} at height {t.start_block_height+1}\n")
+    print(f"## Check reward of {address} at height {t.start_block_height + 1}\n")
 
     # get all vote events
     vf = VoteFetcher(uri)
@@ -144,17 +144,95 @@ def check(args: dict, height: int, term_: dict):
 
     print()
 
+    print(f"## Calculated reward")
     prep = pr.get_prep(address)
     reward = (0 if prep is None else prep.reward()) + voter.reward
-    print(f"## Calculated reward: {reward}")
-    print(f"\t= PRep.commission + PRep.wage + Voter.reward")
-    print(f"\t= {0 if prep is None else prep.commission} + {0 if prep is None else prep.wage} + {voter.reward}")
+    print_reward(prep, voter)
 
     # query iscore from network
     iscore = (int(rpc.query_iscore(address, t.start_block_height + 1).get("iscore", "0x0"), 16)
               - int(rpc.query_iscore(address, t.start_block_height).get("iscore", "0x0"), 16))
 
-    print(f"\n## Queried I-Score: {iscore}")
-
+    print(f"\n## Queried I-Score is{' not ' if reward != iscore else ' '}same with calculated value")
     if reward != iscore:
-        print(f"!!!!! ERROR: Calculated and queried reward are not same. {reward} != {iscore}")
+        print(f"\tcalculated {format_int(reward)}")
+        print(f"\tqueried    {format_int(iscore)}")
+
+
+@time_info
+def estimate(args: dict, height: int, term_: dict):
+    uri = args["uri"]
+    address = args["address"]
+    t = Term.from_dict(term_)
+    if t.iiss_version < 4:
+        pprint("Support IISS 4 only.")
+        return
+
+    rpc = RPC(uri)
+    current_height = rpc.sdk.get_block("latest")["height"]
+    bond = rpc.get_bond(address, current_height)
+    delegation = rpc.get_delegation(address, current_height)
+    prep = rpc.get_prep(address, current_height)
+    total_votes = int(bond["totalBonded"], 16) + int(delegation["totalDelegated"], 16)
+    if prep is None and total_votes == 0:
+        print(f"There is no reward. Since {address} is not a P-Rep and has no votes")
+        return
+
+    print(f"## Estimate reward of {address} at {current_height}\n")
+
+    # get all vote events
+    vf = VoteFetcher(uri)
+    print(f"## Fetch all votes in {t.info()}")
+    vf.fetch(t.start_block_height, current_height, fp=sys.stdout)
+    print()
+
+    print(f"## Fetch all penalties in {t.info()}")
+    pf = PenaltyFetcher(uri)
+    penalties = pf.run(t.start_block_height, current_height, progress=True)
+    print()
+
+    print(f"\n## Status of {address}")
+    if prep is not None:
+        print("> P-Rep")
+        pprint(prep)
+    print("> Bond")
+    pprint(bond)
+    print("> Delegation")
+    pprint(delegation)
+    print()
+
+    print(f"## Calculate reward\n")
+
+    # prep reward
+    pr = PRepReward.from_network(uri, t.start_block_height)
+    pr.height = current_height
+    pr.calculate(vf.votes, penalties)
+
+    # voter reward
+    voter = Voter(address, vf.votes_for_voter_reward(address), pr.start_height, pr.offset_limit(), pr.preps)
+    voter.calculate()
+
+    print(f"## Estimated reward")
+    prep = pr.get_prep(address)
+    print_reward(prep, voter, total_votes, t.period)
+
+
+def print_reward(prep, voter, total_votes: int = 0, period: int = 0):
+    reward = (0 if prep is None else prep.reward()) + voter.reward
+    reward_loop = reward // 10 ** 3
+    print(f"\t= PRep.commission + PRep.wage + Voter.reward")
+    print()
+    print(f"\t= {format_int(0 if prep is None else prep.commission)} # PRep.commission")
+    print(f"\t+ {format_int(0 if prep is None else prep.wage)} # PRep.wage")
+    print(f"\t+ {format_int(voter.reward)} # Voter.reward")
+    print()
+    print(f"\t= {format_int(reward)} iscore")
+    print(f"\t= {format_int(reward_loop)} loop")
+    print(f"\t= {format_int(reward_loop / 10 ** 18)} icx")
+    if total_votes > 0:
+        apy = reward_loop * 365 * 100 * 43200 / (total_votes * period)
+        print(f"\n## Estimated APY = {apy} %")
+
+
+def format_int(value):
+    return f"{value:40,}"

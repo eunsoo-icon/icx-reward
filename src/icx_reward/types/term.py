@@ -54,6 +54,9 @@ class Term:
     def info(self) -> str:
         return f"Term('sequence': {self.sequence}', start_height: {self.start_block_height}, 'end_block_height': {self.end_block_height})"
 
+    def is_prep(self, address: str):
+        return address in [str(p.address) for p in self.preps]
+
     @staticmethod
     def from_dict(values: dict):
         return Term(

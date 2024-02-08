@@ -47,6 +47,7 @@ subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
 cmds = [
     ("check", "check I-Score of account", [add_uri, add_address, add_time, add_export_vote, add_import_vote]),
+    ("estimate", "estimate reward of current Term", [add_uri, add_address]),
     ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_time, add_address_optional, add_export_vote]),
     ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_time]),
     ("query", "query I-Score of account", [add_uri, add_address, add_time]),

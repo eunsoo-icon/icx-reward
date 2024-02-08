@@ -32,6 +32,12 @@ class PRep:
                 f"'accum_voted': {self.__accumulated_voted}, 'accum_power': {self.__accumulated_power}, "
                 f"'commission': {self.__commission}, 'wage': {self.__wage}, 'voter_reward': {self.__voter_reward})")
 
+    def __dict__(self):
+        return {
+            "address": self.__address,
+            "enable": self.__enable,
+        }
+
     @property
     def enable(self) -> bool:
         return self.__enable
@@ -211,15 +217,18 @@ class PRepReward:
                  iglobal: int, iprep: int, iwage: int):
         self.__start_height: int = start
         self.__end_height: int = end
+        self.__height = self.__end_height
         self.__br: int = br
         self.__validator_count: int = validator_count
         self.__min_bond: int = min_bond
         self.__preps: Dict[str, PRep] = preps
+        self.__rpc = RPC(uri)
 
         self.__total_prep_reward: int = self._reward_iscore_of_term(iglobal, iprep, self.period())
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
-        self.__rpc = RPC(uri)
+
+
 
     @staticmethod
     def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
@@ -232,6 +241,14 @@ class PRepReward:
     @property
     def end_height(self) -> int:
         return self.__end_height
+
+    @property
+    def height(self) -> int:
+        return self.__height
+
+    @height.setter
+    def height(self, value: int):
+        self.__height = value
 
     def period(self) -> int:
         return self.__end_height + 1 - self.__start_height
@@ -280,7 +297,7 @@ class PRepReward:
 
     def update_enables(self):
         for prep in self.__preps.values():
-            prep.update_enable(self.__rpc.uri, self.__end_height)
+            prep.update_enable(self.__rpc.uri, self.__height)
 
     def update_penalties(self, penalties: Dict[int, Penalty]):
         for prep in self.__preps.values():
