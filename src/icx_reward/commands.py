@@ -9,6 +9,8 @@ from icx_reward.types.exception import InvalidParamsException
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
 
+DENOM = 10000
+
 
 def time_info(f):
     @wraps(f)
@@ -43,7 +45,7 @@ def time_info(f):
 
 
 @time_info
-def query(args: dict, height: int, term_: dict):
+def query(args: dict, height: int, _term: dict):
     rpc = RPC(args["uri"])
     resp = rpc.query_iscore(
         address=args["address"],
@@ -53,12 +55,12 @@ def query(args: dict, height: int, term_: dict):
 
 
 @time_info
-def term(args: dict, height: int, term_: dict):
+def term(_args: dict, _height: int, term_: dict):
     pprint(term_)
 
 
 @time_info
-def fetch_vote(args: dict, height: int, term_: dict):
+def fetch_vote(args: dict, _height: int, term_: dict):
     uri = args["uri"]
     export_fp = args.get("export")
     address = args["address"]
@@ -79,7 +81,7 @@ def fetch_vote(args: dict, height: int, term_: dict):
 
 
 @time_info
-def fetch_penalty(args: dict, height: int, term_: dict):
+def fetch_penalty(args: dict, _height: int, term_: dict):
     address = args["address"]
     t = Term.from_dict(term_)
 
@@ -97,7 +99,7 @@ def fetch_penalty(args: dict, height: int, term_: dict):
 
 
 @time_info
-def check(args: dict, height: int, term_: dict):
+def check(args: dict, _height: int, term_: dict):
     uri = args["uri"]
     address = args["address"]
     import_fp = args["import"]
@@ -160,7 +162,7 @@ def check(args: dict, height: int, term_: dict):
 
 
 @time_info
-def estimate(args: dict, height: int, term_: dict):
+def estimate(args: dict, _height: int, term_: dict):
     uri = args["uri"]
     address = args["address"]
     t = Term.from_dict(term_)
@@ -215,6 +217,37 @@ def estimate(args: dict, height: int, term_: dict):
     print(f"## Estimated reward")
     prep = pr.get_prep(address)
     print_reward(prep, voter, total_votes, t.period)
+
+
+@time_info
+def preps_apy(args: dict, _height: int, term_: dict):
+    uri = args["uri"]
+    count = args["count"]
+    t = Term.from_dict(term_)
+
+    rpc = RPC(uri)
+    network_info = rpc.get_network_info(t.start_block_height)
+    t = rpc.term(height=t.start_block_height)
+    start_term = Term.from_dict(t)
+    if "rewardFund2" in network_info:
+        i_global = int(network_info["rewardFund2"]["Iglobal"], 16)
+        i_prep = int(network_info["rewardFund2"]["Iprep"], 16)
+    else:
+        i_global = start_term.reward_fund["Iglobal"]
+        i_prep = start_term.reward_fund["Iprep"]
+
+    for prep in start_term.preps:
+        prep.calculate_apy(
+            total_reward_for_preps=i_global * i_prep // DENOM,
+            total_power=start_term.total_power,
+            br=start_term.bond_requirement,
+        )
+
+    apy_list = sorted(start_term.preps, key=lambda p: p.apy_sort_key(), reverse=True)
+    for i, p in enumerate(apy_list):
+        if count is not None and count == i:
+            break
+        print(f"#{i} : {p.print_apy_info()}")
 
 
 def print_reward(prep, voter, total_votes: int = 0, period: int = 0):

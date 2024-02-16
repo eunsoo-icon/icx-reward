@@ -86,3 +86,10 @@ class RPC(RPCBase):
             params={"address": address if isinstance(address, str) else str(address)},
             height=height,
         )
+
+    def get_network_info(self, height: int = None):
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getNetworkInfo",
+            height=height,
+        )

@@ -42,12 +42,17 @@ def add_import_vote(subparser, required: bool = False):
                            type=argparse.FileType('r'), default=None, required=required)
 
 
+def add_count(subparser, required: bool = False):
+    subparser.add_argument("--count", help="count", type=num_type, default=None, required=required)
+
+
 parser = ArgumentParser(prog="icx-reward")
 subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
 cmds = [
     ("check", "check I-Score of account", [add_uri, add_address, add_time, add_export_vote, add_import_vote]),
     ("estimate", "estimate reward of current Term", [add_uri, add_address]),
+    ("preps-apy", "get the APY of voters who voting for Main/Sub P-Reps", [add_uri, add_time, add_count]),
     ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_time, add_address_optional, add_export_vote]),
     ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_time]),
     ("query", "query I-Score of account", [add_uri, add_address, add_time]),

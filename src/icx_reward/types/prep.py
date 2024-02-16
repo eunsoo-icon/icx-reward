@@ -173,6 +173,9 @@ class PRep(PRepSummary):
         self._max_commission_rate = int(max_commission_rate, 16)
         self._max_commission_change_rate = int(max_commission_change_rate, 16)
 
+        self._apy = 0
+        self._remain_vote = 0
+
     def __str__(self):
         return (f'PRep{{{self._status}, {self._grade}, {self._penalty}, bonded:{self._bonded}, '
                 f'last_height:{self._last_height}, '
@@ -205,6 +208,9 @@ class PRep(PRepSummary):
     def bonded(self) -> int:
         return self._bonded
 
+    def voted(self) -> int:
+        return self._bonded + self._delegated
+
     @property
     def last_height(self) -> int:
         return self._last_height
@@ -229,6 +235,24 @@ class PRep(PRepSummary):
 
     def unjailable(self) -> bool:
         return self._jail_info.jail_flags.unjailable()
+
+    def bond_rate(self) -> float:
+        return round(self._bonded * 100 / self.voted(), 2)
+
+    def calculate_apy(self, total_reward_for_preps: int, total_power: int, br: int = 5) -> float:
+        reward_for_prep = total_reward_for_preps * self._power * 12 // total_power
+        reward_for_voter = reward_for_prep * (1 - self._commission_rate / 10000)
+        self._apy = round(reward_for_voter * 100 / self.voted(), 2)
+        self._remain_vote = (self._bonded * 100 // br) - self.voted()
+        return self._apy
+
+    def apy_sort_key(self):
+        return self._apy, self._remain_vote
+
+    def print_apy_info(self) -> str:
+        # return (f'name: "{self._name}" APY: {self._apy:.4f}% commission_rate: {self._commission_rate / 100:.2f}% '
+        return (f'name: "{self._name}" APY: {self._apy}% commission_rate: {self._commission_rate / 100}% '
+                f'bond_rate: {self.bond_rate()}% remain_vote: {self._remain_vote//10**18:,}icx address: {self._address}')
 
     @staticmethod
     def from_dict(values: dict):
