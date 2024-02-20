@@ -32,6 +32,9 @@ class Grade(IntEnum):
     def __str__(self) -> str:
         return repr(self)
 
+    def rewardable(self) -> bool:
+        return self < self.Candidate
+
     @staticmethod
     def from_string(grade: str):
         return Grade(int(grade, 16))
@@ -240,14 +243,17 @@ class PRep(PRepSummary):
         return round(self._bonded * 100 / self.voted(), 2)
 
     def calculate_apy(self, total_reward_for_preps: int, total_power: int, br: int = 5) -> float:
-        reward_for_prep = total_reward_for_preps * self._power * 12 // total_power
-        reward_for_voter = reward_for_prep * (1 - self._commission_rate / 10000)
-        self._apy = round(reward_for_voter * 100 / self.voted(), 2)
+        if self.grade.rewardable():
+            reward_for_prep = total_reward_for_preps * self._power * 12 // total_power
+            reward_for_voter = reward_for_prep * (1 - self._commission_rate / 10000)
+            self._apy = round(reward_for_voter * 100 / self.voted(), 2)
+        else:
+            self._apy = float(0)
         self._remain_vote = (self._bonded * 100 // br) - self.voted()
         return self._apy
 
     def apy_sort_key(self):
-        return self._apy, self._remain_vote
+        return (Grade.NONE - self.grade), self._apy, self._remain_vote
 
     def print_apy_info(self) -> str:
         # return (f'name: "{self._name}" APY: {self._apy:.4f}% commission_rate: {self._commission_rate / 100:.2f}% '

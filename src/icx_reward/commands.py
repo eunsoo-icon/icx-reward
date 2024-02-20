@@ -220,7 +220,7 @@ def estimate(args: dict, _height: int, term_: dict):
 
 
 @time_info
-def preps_apy(args: dict, _height: int, term_: dict):
+def apy(args: dict, _height: int, term_: dict):
     uri = args["uri"]
     count = args["count"]
     t = Term.from_dict(term_)
@@ -236,14 +236,21 @@ def preps_apy(args: dict, _height: int, term_: dict):
         i_global = start_term.reward_fund["Iglobal"]
         i_prep = start_term.reward_fund["Iprep"]
 
-    for prep in start_term.preps:
+    preps = []
+    total_power = 0
+    for p in start_term.preps:
+        prep = rpc.get_prep(p.address, to_obj=True)
+        preps.append(prep)
+        total_power += prep.power
+
+    for prep in preps:
         prep.calculate_apy(
             total_reward_for_preps=i_global * i_prep // DENOM,
-            total_power=start_term.total_power,
+            total_power=total_power,
             br=start_term.bond_requirement,
         )
 
-    apy_list = sorted(start_term.preps, key=lambda p: p.apy_sort_key(), reverse=True)
+    apy_list = sorted(preps, key=lambda p: p.apy_sort_key(), reverse=True)
     for i, p in enumerate(apy_list):
         if count is not None and count == i:
             break
