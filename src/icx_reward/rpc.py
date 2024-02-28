@@ -1,6 +1,7 @@
 from typing import Union
 
 from iconsdk.builder.call_builder import CallBuilder
+from iconsdk.exception import JSONRPCException
 from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
 
@@ -59,13 +60,16 @@ class RPC(RPCBase):
             height=height,
         )
 
-    def get_prep(self, address: Union[str, Address], height: int = None, to_obj: bool = False) -> Union[dict, PRep]:
-        resp = self.call(
-            to=SYSTEM_ADDRESS,
-            method="getPRep",
-            params={"address": address if isinstance(address, str) else str(address)},
-            height=height,
-        )
+    def get_prep(self, address: Union[str, Address], height: int = None, to_obj: bool = False) -> Union[dict, PRep, None]:
+        try:
+            resp = self.call(
+                to=SYSTEM_ADDRESS,
+                method="getPRep",
+                params={"address": address if isinstance(address, str) else str(address)},
+                height=height,
+            )
+        except JSONRPCException:
+            return None
         if to_obj:
             return PRep.from_dict(resp)
         else:
