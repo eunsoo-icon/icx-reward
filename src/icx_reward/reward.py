@@ -3,7 +3,9 @@ from __future__ import annotations
 import sys
 from typing import Dict, List, Optional
 
-from icx_reward.penalty import Penalty, PenaltyFetcher
+from prettytable import PrettyTable
+
+from icx_reward.penalty import Penalty
 from icx_reward.rpc import RPC
 from icx_reward.types.constants import ICX_TO_ISCORE_RATE, MONTH_BLOCK, RATE_DENOM
 from icx_reward.types.exception import InvalidParamsException
@@ -134,6 +136,16 @@ class PRep:
             commission_rate=int(prep.get("commissionRate", "0x0"), 16),
         )
 
+    @classmethod
+    def table_header(cls):
+        return ['address', 'enable', 'accum_voted', 'accum_power', 'commission', 'wage', 'voter_reward']
+
+    def table_value(self):
+        return [
+            self.__address, self.__enable, self.__accumulated_voted, self.__accumulated_power,
+            self.__commission, self.__wage, self.__voter_reward,
+        ]
+
 
 class Voter:
     def __init__(self, address: str, votes: Votes, start_height: int, offset_limit: int, preps: Dict[str, PRep],
@@ -228,8 +240,6 @@ class PRepReward:
         self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
         self.__total_accumulated_power: int = 0
 
-
-
     @staticmethod
     def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
         return (iglobal * rate // RATE_DENOM) * ICX_TO_ISCORE_RATE * term_period // MONTH_BLOCK
@@ -319,7 +329,8 @@ class PRepReward:
                 if to not in preps_addr:
                     continue
                 prep = self.__preps[to]
-                prep.apply_vote_diff(vote.type, value, self.offset_limit() - vote.offset(self.__start_height), self.__br)
+                prep.apply_vote_diff(vote.type, value, self.offset_limit() - vote.offset(self.__start_height),
+                                     self.__br)
                 self.__preps[to] = prep
 
         # update total_accumulated_power
@@ -351,8 +362,14 @@ class PRepReward:
         print(f"Total PRep reward: {self.__total_prep_reward}, Total wage: {self.__total_wage}", file=file)
         print(f"Total accumulated power: {self.__total_accumulated_power}", file=file)
         print(f"Elected PReps", file=file)
+        header = ["rand"]
+        header.extend(PRep.table_header())
+        tab = PrettyTable(header)
         for i, prep in enumerate(self.__preps.values()):
-            print(f"\t#{i}: {prep}", file=file)
+            value = [i]
+            value.extend(prep.table_value())
+            tab.add_row(value)
+        print(tab)
 
     @staticmethod
     def from_network(uri: str, height: int) -> PRepReward:

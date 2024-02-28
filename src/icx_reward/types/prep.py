@@ -242,6 +242,10 @@ class PRep(PRepSummary):
     def bond_rate(self) -> float:
         return round(self._bonded * 100 / self.voted(), 2)
 
+    @property
+    def remain_vote(self) -> int:
+        return self._remain_vote
+
     def calculate_apy(self, total_reward_for_preps: int, total_power: int, br: int = 5) -> float:
         if self.grade.rewardable():
             reward_for_prep = total_reward_for_preps * self._power * 12 // total_power
@@ -255,10 +259,19 @@ class PRep(PRepSummary):
     def apy_sort_key(self):
         return (Grade.NONE - self.grade), self._apy, self._remain_vote
 
-    def print_apy_info(self) -> str:
-        # return (f'name: "{self._name}" APY: {self._apy:.4f}% commission_rate: {self._commission_rate / 100:.2f}% '
-        return (f'name: "{self._name}" APY: {self._apy}% commission_rate: {self._commission_rate / 100}% '
-                f'bond_rate: {self.bond_rate()}% remain_vote: {self._remain_vote//10**18:,}icx address: {self._address}')
+    @staticmethod
+    def apy_table_header() -> list:
+        return ["name", "APY", "commission_rate", "bond_rate", "remain_vote(icx)", "address"]
+
+    def apy_table_value(self) -> list:
+        return [
+            self._name,
+            f'{self._apy}',
+            f'{self._commission_rate / 100}',
+            f'{self.bond_rate()}',
+            f'{self._remain_vote//10**18:,}',
+            f'{self._address}',
+        ]
 
     @staticmethod
     def from_dict(values: dict):

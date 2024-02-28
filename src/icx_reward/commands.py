@@ -1,11 +1,15 @@
 import sys
 from functools import wraps
+from typing import List
+
+from prettytable import PrettyTable
 
 from icx_reward.penalty import PenaltyFetcher
 from icx_reward.rpc import RPC
 from icx_reward.reward import PRepReward, Voter
-from icx_reward.types.term import Term
 from icx_reward.types.exception import InvalidParamsException
+from icx_reward.types.prep import PRep
+from icx_reward.types.term import Term
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
 
@@ -251,10 +255,7 @@ def apy(args: dict, _height: int, term_: dict):
         )
 
     apy_list = sorted(preps, key=lambda p: p.apy_sort_key(), reverse=True)
-    for i, p in enumerate(apy_list):
-        if count is not None and count == i:
-            break
-        print(f"#{i} : {p.print_apy_info()}")
+    print_apy(apy_list, count)
 
 
 def print_reward(prep, voter, total_votes: int = 0, period: int = 0):
@@ -276,3 +277,12 @@ def print_reward(prep, voter, total_votes: int = 0, period: int = 0):
 
 def format_int(value):
     return f"{value:40,}"
+
+
+def print_apy(apy_list: List[PRep], count: int = None):
+    tab = PrettyTable(apy_list[0].apy_table_header())
+    for i, p in enumerate(apy_list):
+        if count != 0 and count == i:
+            break
+        tab.add_row(p.apy_table_value())
+    print(tab)
