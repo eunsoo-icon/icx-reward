@@ -9,6 +9,7 @@ from icx_reward.rpc import RPC
 from icx_reward.reward import PRepReward, Voter
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import PRep
+from icx_reward.types.reward_fund import RewardFund
 from icx_reward.types.term import Term
 from icx_reward.utils import pprint
 from icx_reward.vote import VoteFetcher
@@ -61,6 +62,25 @@ def query(args: dict, height: int, _term: dict):
 @time_info
 def term(_args: dict, _height: int, term_: dict):
     pprint(term_)
+
+
+@time_info
+def wage(args: dict, _height: int, term_: dict):
+    rpc = RPC(args["uri"])
+    t = Term.from_dict(rpc.term(height=int(term_["startBlockHeight"], 16)))
+    total = t.reward_fund.amount_by_key(RewardFund.IWAGE)
+    count = len(t.preps)
+    amount = total // count
+    krw = args["krw"]
+    # tab = PrettyTable(["Total wage", "P-Rep count", "Per P-Rep (icx)"])
+    # tab.add_row([format_int(total, True, 0), count, format_int(amount, True, 0)])
+    tab = PrettyTable()
+    tab.add_column("Total wage", [format_int(total, True, 0)])
+    tab.add_column("P-Rep count", [count])
+    tab.add_column("Wage per P-Rep", [format_int(amount, True, 0)])
+    if krw is not None:
+        tab.add_column("KRW", [format_int(amount * krw, True, 0)])
+    print(tab)
 
 
 @time_info
@@ -269,14 +289,14 @@ def print_reward(prep, voter, total_votes: int = 0, period: int = 0):
     print()
     print(f"\t= {format_int(reward)} iscore")
     print(f"\t= {format_int(reward_loop)} loop")
-    print(f"\t= {format_int(reward_loop / 10 ** 18)} icx")
+    print(f"\t= {format_int(reward_loop, to_icx=True)} icx")
     if total_votes > 0:
         apy = reward_loop * 365 * 100 * 43200 / (total_votes * period)
         print(f"\n## Estimated APY = {apy} %")
 
 
-def format_int(value):
-    return f"{value:40,}"
+def format_int(value, to_icx: bool = False, width: int = 40):
+    return f"{value // 10 ** 18 if to_icx else value:{width},}"
 
 
 def print_apy(apy_list: List[PRep], count: int = None):

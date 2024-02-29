@@ -46,6 +46,10 @@ def add_count(subparser, required: bool = False):
     subparser.add_argument("--count", help="count", type=num_type, default=None, required=required)
 
 
+def add_krw(subparser, required: bool = False):
+    subparser.add_argument("--krw", help="korea won", type=num_type, default=None, required=required)
+
+
 parser = ArgumentParser(prog="icx-reward")
 subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -57,6 +61,7 @@ cmds = [
     ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_time]),
     ("query", "query I-Score of account", [add_uri, add_address, add_time]),
     ("term", "get Term information", [add_uri, add_time]),
+    ("wage", "calculate P-Rep wage", [add_uri, add_time, add_krw]),
 ]
 for cmd in cmds:
     p = subparsers.add_parser(cmd[0], help=cmd[1])
