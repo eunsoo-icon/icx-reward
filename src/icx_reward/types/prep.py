@@ -257,7 +257,7 @@ class PRep(PRepSummary):
         return self._apy
 
     def apy_sort_key(self):
-        return (Grade.NONE - self.grade), self._apy, self._remain_vote
+        return (Grade.Candidate > self.grade), self._apy, self._remain_vote
 
     @staticmethod
     def apy_table_header() -> list:
