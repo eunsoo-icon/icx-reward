@@ -49,9 +49,9 @@ def time_info(f):
     return wrapper
 
 
-@time_info
-def query(args: dict, height: int, _term: dict):
+def query_iscore(args: dict):
     rpc = RPC(args["uri"])
+    height = args["height"]
     resp = rpc.query_iscore(
         address=args["address"],
         height=height,

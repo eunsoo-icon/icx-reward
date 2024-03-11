@@ -26,6 +26,10 @@ def add_address_optional(subparser):
     add_address(subparser, False)
 
 
+def add_height(subparser):
+    subparser.add_argument("--height", type=non_negative_num_type, default=None, help="height of block")
+
+
 def add_time(subparser):
     subparser.add_argument("--height", type=non_negative_num_type, default=None, help="height of block")
     subparser.add_argument("--term", type=num_type, default=None,
@@ -59,7 +63,7 @@ cmds = [
     ("apy", "get the APY of voters who voting for Main/Sub P-Reps", [add_uri, add_time, add_count]),
     ("fetch-vote", "fetch all vote events in given Term", [add_uri, add_time, add_address_optional, add_export_vote]),
     ("fetch-penalty", "fetch penalties of account in given Term", [add_uri, add_address_optional, add_time]),
-    ("query", "query I-Score of account", [add_uri, add_address, add_time]),
+    ("query-iscore", "query I-Score of account", [add_uri, add_address, add_height]),
     ("term", "get Term information", [add_uri, add_time]),
     ("wage", "calculate P-Rep wage", [add_uri, add_time, add_krw]),
 ]
