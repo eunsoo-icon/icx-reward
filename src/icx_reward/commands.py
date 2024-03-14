@@ -72,14 +72,13 @@ def wage(args: dict, _height: int, term_: dict):
     count = len(t.preps)
     amount = total // count
     krw = args["krw"]
-    # tab = PrettyTable(["Total wage", "P-Rep count", "Per P-Rep (icx)"])
-    # tab.add_row([format_int(total, True, 0), count, format_int(amount, True, 0)])
     tab = PrettyTable()
+    tab.title = f"Monthly P-Rep wage"
     tab.add_column("Total wage", [format_int(total, True, 0)])
     tab.add_column("P-Rep count", [count])
-    tab.add_column("Wage per P-Rep", [format_int(amount, True, 0)])
+    tab.add_column("Wage (icx)", [format_int(amount, True, 0)])
     if krw is not None:
-        tab.add_column("KRW", [format_int(amount * krw, True, 0)])
+        tab.add_column(f"KRW ({krw})", [format_int(amount * krw, True, 0)])
     print(tab)
 
 
@@ -300,9 +299,18 @@ def format_int(value, to_icx: bool = False, width: int = 40):
 
 
 def print_apy(apy_list: List[PRep], count: int = None):
-    tab = PrettyTable(apy_list[0].apy_table_header())
+    tab = PrettyTable(["name", "APY", "commission %", "bond %", "remain_vote(icx)", "address"])
     for i, p in enumerate(apy_list):
         if count != 0 and count == i:
             break
-        tab.add_row(p.apy_table_value())
+        tab.add_row(
+            [
+                p.name,
+                p.apy,
+                p.commission_rate * 100 / DENOM,
+                p.bond_rate(),
+                format_int(p.remain_vote, to_icx=True, width=10),
+                str(p.address),
+            ]
+        )
     print(tab)
