@@ -1,9 +1,14 @@
+from time import sleep
+
 from typing import Union
 
 from iconsdk.builder.call_builder import CallBuilder
+from iconsdk.builder.transaction_builder import CallTransactionBuilder
 from iconsdk.exception import JSONRPCException
 from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
+from iconsdk.signed_transaction import SignedTransaction
+from iconsdk.wallet.wallet import KeyWallet
 
 from icx_reward.types.address import Address
 from icx_reward.types.constants import SYSTEM_ADDRESS
@@ -37,6 +42,39 @@ class RPCBase:
             .build()
         return self.__sdk.call(cb)
 
+    def invoke(self,
+               wallet: KeyWallet,
+               method: str,
+               params: dict = {},
+               to_: str = SYSTEM_ADDRESS):
+        tx = CallTransactionBuilder().from_(wallet.get_address()) \
+            .to(to_) \
+            .step_limit(1000000) \
+            .nid(1) \
+            .method(method) \
+            .params(params) \
+            .build()
+
+        signed_tx = SignedTransaction(tx, wallet)
+        print(signed_tx.signed_transaction_dict)
+
+        tx_hash = self.sdk.send_transaction(signed_tx)
+        return tx_hash
+
+    def wait_tx_confirm(self, tx_hash: str) -> dict:
+        block_interval = 2
+        i = 0
+        while True:
+            try:
+                tx_result = self.sdk.get_transaction_result(tx_hash)
+            except JSONRPCException:
+                if i == 10:
+                    assert False, f"waited {i} * {block_interval} sec and failed to get tx result for {tx_hash}"
+                sleep(block_interval)
+                i += 1
+            else:
+                return tx_result
+
 
 class RPC(RPCBase):
     def __init__(self, uri: str):
@@ -52,6 +90,9 @@ class RPC(RPCBase):
             params={"address": address},
             height=height,
         )
+
+    def claim_iscore(self, wallet: KeyWallet) -> str:
+        return self.invoke(wallet=wallet, method="claimIScore")
 
     def term(self, height: int = None):
         return self.call(
@@ -74,6 +115,21 @@ class RPC(RPCBase):
             return PRep.from_dict(resp)
         else:
             return resp
+
+    def set_stake(self, wallet: KeyWallet, amount: int):
+        return self.invoke(
+            wallet=wallet,
+            method="setStake",
+            params={"value": hex(amount)},
+        )
+
+    def get_stake(self, address: Union[str, Address], height: int = None):
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getStake",
+            params={"address": address if isinstance(address, str) else str(address)},
+            height=height,
+        )
 
     def get_bond(self, address: Union[str, Address], height: int = None):
         return self.call(
