@@ -3,7 +3,7 @@ from time import sleep
 from typing import Union
 
 from iconsdk.builder.call_builder import CallBuilder
-from iconsdk.builder.transaction_builder import CallTransactionBuilder
+from iconsdk.builder.transaction_builder import CallTransactionBuilder, TransactionBuilder
 from iconsdk.exception import JSONRPCException
 from iconsdk.icon_service import IconService
 from iconsdk.providers.http_provider import HTTPProvider
@@ -27,6 +27,23 @@ class RPCBase:
     @property
     def sdk(self) -> IconService:
         return self.__sdk
+
+    def transfer(self,
+                 wallet: KeyWallet,
+                 to_: str,
+                 value: int,
+             ):
+        tx = TransactionBuilder().from_(wallet.get_address()) \
+            .to(to_) \
+            .step_limit(1000000) \
+            .nid(1) \
+            .value(value) \
+            .build()
+
+        signed_tx = SignedTransaction(tx, wallet)
+
+        tx_hash = self.sdk.send_transaction(signed_tx)
+        return tx_hash
 
     def call(self,
              method: str,
@@ -56,7 +73,6 @@ class RPCBase:
             .build()
 
         signed_tx = SignedTransaction(tx, wallet)
-        print(signed_tx.signed_transaction_dict)
 
         tx_hash = self.sdk.send_transaction(signed_tx)
         return tx_hash
