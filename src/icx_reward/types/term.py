@@ -1,13 +1,14 @@
 from typing import List
 
 from icx_reward.types.prep import PRep
+from icx_reward.types.rate import Rate
 from icx_reward.types.reward_fund import RewardFund
 
 
 class Term:
     def __init__(self,
                  block_height: int,
-                 bond_requirement: int,
+                 bond_requirement: Rate,
                  end_block_height: int,
                  iiss_version: int,
                  is_decentralized: bool,
@@ -59,9 +60,13 @@ class Term:
 
     @staticmethod
     def from_dict(values: dict):
+        if "bondRequirement" in values:
+            br = Rate(int(values["bondRequirement"], 16), Rate.DENOM_OLD)
+        else:
+            br = Rate(int(values["bondRequirementRate"], 16))
         return Term(
             block_height=int(values["blockHeight"], 16),
-            bond_requirement=int(values["bondRequirement"], 16),
+            bond_requirement= br,
             end_block_height=int(values["endBlockHeight"], 16),
             iiss_version=int(values["iissVersion"], 16),
             is_decentralized=bool(int(values["isDecentralized"], 16)),

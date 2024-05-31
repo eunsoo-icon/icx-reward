@@ -1,6 +1,7 @@
 from enum import auto, IntEnum, IntFlag
 
 from icx_reward.types.address import Address
+from icx_reward.types.rate import Rate
 
 
 class Status(IntEnum):
@@ -172,9 +173,9 @@ class PRep(PRepSummary):
         self._has_pub_key = has_pub_key
         self._bonded = int(bonded, 16)
         self._last_height = int(last_height, 16)
-        self._commission_rate = int(commission_rate, 16)
-        self._max_commission_rate = int(max_commission_rate, 16)
-        self._max_commission_change_rate = int(max_commission_change_rate, 16)
+        self._commission_rate = Rate(int(commission_rate, 16))
+        self._max_commission_rate = Rate(int(max_commission_rate, 16))
+        self._max_commission_change_rate = Rate(int(max_commission_change_rate, 16))
 
         self._apy = 0
         self._remain_vote = 0
@@ -182,9 +183,9 @@ class PRep(PRepSummary):
     def __str__(self):
         return (f'PRep{{{self._status}, {self._grade}, {self._penalty}, bonded:{self._bonded}, '
                 f'last_height:{self._last_height}, '
-                f'commission_rate:{self._commission_rate}, '
-                f'max_commission_rate:{self._max_commission_rate}, '
-                f'max_commission_change_rate:{self._max_commission_change_rate}, '
+                f'commission_rate:{self._commission_rate.value}, '
+                f'max_commission_rate:{self._max_commission_rate.value}, '
+                f'max_commission_change_rate:{self._max_commission_change_rate.value}, '
                 f'{self._jail_info}, has_pub_key:{self._has_pub_key}, {super().__str__()}}}')
 
     @property
@@ -219,15 +220,15 @@ class PRep(PRepSummary):
         return self._last_height
 
     @property
-    def commission_rate(self) -> int:
+    def commission_rate(self) -> Rate:
         return self._commission_rate
 
     @property
-    def max_commission_rate(self) -> int:
+    def max_commission_rate(self) -> Rate:
         return self._max_commission_rate
 
     @property
-    def max_commission_change_rate(self) -> int:
+    def max_commission_change_rate(self) -> Rate:
         return self._max_commission_change_rate
 
     def in_jail(self) -> bool:
@@ -250,14 +251,14 @@ class PRep(PRepSummary):
     def apy(self) -> float:
         return self._apy
 
-    def calculate_apy(self, total_reward_for_preps: int, total_power: int, br: int = 5) -> float:
+    def calculate_apy(self, total_reward_for_preps: int, total_power: int, br: Rate) -> float:
         if self.grade.rewardable():
             reward_for_prep = total_reward_for_preps * self._power * 12 // total_power
-            reward_for_voter = reward_for_prep * (1 - self._commission_rate / 10000)
+            reward_for_voter = reward_for_prep * (1 - self._commission_rate.value / self._commission_rate.denom)
             self._apy = round(reward_for_voter * 100 / self.voted(), 3)
         else:
             self._apy = float(0)
-        self._remain_vote = (self._bonded * 100 // br) - self.voted()
+        self._remain_vote = br.divide_int(self._bonded) - self.voted()
         return self._apy
 
     def apy_sort_key(self):

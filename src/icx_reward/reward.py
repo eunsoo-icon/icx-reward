@@ -10,6 +10,9 @@ from icx_reward.rpc import RPC
 from icx_reward.types.constants import ICX_TO_ISCORE_RATE, MONTH_BLOCK, RATE_DENOM
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import JailInfo, PRep as PRepResp
+from icx_reward.types.rate import Rate
+from icx_reward.types.reward_fund import RewardFund
+from icx_reward.types.term import Term
 from icx_reward.vote import Vote, Votes
 
 
@@ -96,14 +99,14 @@ class PRep:
             if not p.is_empty():
                 self.penalties[k] = p
 
-    def apply_vote_diff(self, type_: int, value: int, period: int, br: int):
+    def apply_vote_diff(self, type_: int, value: int, period: int, br: Rate):
         if type_ == Vote.TYPE_BOND:
             self.__bonded += value
         else:
             self.__delegated += value
         self.__accumulated_voted += value * period
 
-        power = min(self.__bonded * 100 // br, self.__bonded + self.__delegated)
+        power = min(br.divide_int(self.__bonded), self.__bonded + self.__delegated)
         power_diff = power - self.__power
         self.__power = power
         self.__accumulated_power += power_diff * period
@@ -225,24 +228,24 @@ class Voter:
 
 
 class PRepReward:
-    def __init__(self, uri: str, start: int, end: int, br: int, validator_count: int, min_bond: int, preps: dict,
-                 iglobal: int, iprep: int, iwage: int):
+    def __init__(self, uri: str, start: int, end: int, br: Rate, validator_count: int, min_bond: int, preps: dict,
+                 rf: RewardFund):
         self.__start_height: int = start
         self.__end_height: int = end
         self.__height = self.__end_height
-        self.__br: int = br
+        self.__br: Rate = br
         self.__validator_count: int = validator_count
         self.__min_bond: int = min_bond
         self.__preps: Dict[str, PRep] = preps
         self.__rpc = RPC(uri)
 
-        self.__total_prep_reward: int = self._reward_iscore_of_term(iglobal, iprep, self.period())
-        self.__total_wage: int = self._reward_iscore_of_term(iglobal, iwage, self.period())
+        self.__total_prep_reward: int = self._reward_iscore_of_term(rf.amount_by_key(RewardFund.IPREP), self.period())
+        self.__total_wage: int = self._reward_iscore_of_term(rf.amount_by_key(RewardFund.IWAGE), self.period())
         self.__total_accumulated_power: int = 0
 
     @staticmethod
-    def _reward_iscore_of_term(iglobal: int, rate: int, term_period: int) -> int:
-        return (iglobal * rate // RATE_DENOM) * ICX_TO_ISCORE_RATE * term_period // MONTH_BLOCK
+    def _reward_iscore_of_term(icx_amount: int, term_period: int) -> int:
+        return icx_amount * ICX_TO_ISCORE_RATE * term_period // MONTH_BLOCK
 
     @property
     def start_height(self) -> int:
@@ -377,8 +380,10 @@ class PRepReward:
 
     @staticmethod
     def from_term(uri: str, term: dict) -> PRepReward:
-        if term["startBlockHeight"] != term["blockHeight"]:
+        t = Term.from_dict(term)
+        if t.start_block_height != t.block_height:
             raise InvalidParamsException(f"term must be value at term start height")
+
         preps: Dict[str, PRep] = {}
         for p in term["preps"]:
             prep = PRep.from_get_prep(p)
@@ -386,13 +391,11 @@ class PRepReward:
 
         return PRepReward(
             uri=uri,
-            start=int(term["startBlockHeight"], 0),
-            end=int(term["endBlockHeight"], 0),
-            br=int(term["bondRequirement"], 0),
-            validator_count=len(term["preps"]),
+            start=t.start_block_height,
+            end=t.end_block_height,
+            br=t.bond_requirement,
+            validator_count=len(preps),
             preps=preps,
-            iglobal=int(term["rewardFund"]["Iglobal"], 0),
-            iprep=int(term["rewardFund"]["Iprep"], 0),
-            iwage=int(term["rewardFund"].get("Iwage", "0x0"), 0),
-            min_bond=int(term.get("minimumBond", "0x0"), 0),
+            min_bond=t.minimum_bond,
+            rf=t.reward_fund,
         )

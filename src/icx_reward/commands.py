@@ -9,6 +9,7 @@ from icx_reward.rpc import RPC
 from icx_reward.reward import PRepReward, Voter
 from icx_reward.types.exception import InvalidParamsException
 from icx_reward.types.prep import PRep
+from icx_reward.types.rate import Rate
 from icx_reward.types.reward_fund import RewardFund
 from icx_reward.types.term import Term
 from icx_reward.utils import pprint
@@ -250,14 +251,10 @@ def apy(args: dict, _height: int, term_: dict):
 
     rpc = RPC(uri)
     network_info = rpc.get_network_info(t.start_block_height)
-    t = rpc.term(height=t.start_block_height)
-    start_term = Term.from_dict(t)
+    start_term = Term.from_dict(rpc.term(height=t.start_block_height))
+    rf: RewardFund = start_term.reward_fund
     if "rewardFund2" in network_info:
-        i_global = int(network_info["rewardFund2"]["Iglobal"], 16)
-        i_prep = int(network_info["rewardFund2"]["Iprep"], 16)
-    else:
-        i_global = start_term.reward_fund["Iglobal"]
-        i_prep = start_term.reward_fund["Iprep"]
+        rf = RewardFund.from_dict(network_info["rewardFund2"])
 
     preps = []
     total_power = 0
@@ -268,7 +265,7 @@ def apy(args: dict, _height: int, term_: dict):
 
     for prep in preps:
         prep.calculate_apy(
-            total_reward_for_preps=i_global * i_prep // DENOM,
+            total_reward_for_preps=rf.amount_by_key(RewardFund.IPREP),
             total_power=total_power,
             br=start_term.bond_requirement,
         )
@@ -307,7 +304,7 @@ def print_apy(apy_list: List[PRep], count: int = None):
             [
                 p.name,
                 p.apy,
-                p.commission_rate * 100 / DENOM,
+                p.commission_rate.percent(),
                 p.bond_rate(),
                 format_int(p.remain_vote, to_icx=True, width=10),
                 str(p.address),
