@@ -1,5 +1,6 @@
 from typing import List
 
+from icx_reward.rpc import RPC
 from icx_reward.types.prep import PRep
 from icx_reward.types.rate import Rate
 from icx_reward.types.reward_fund import RewardFund
@@ -15,7 +16,6 @@ class Term:
                  main_prep_count: int,
                  minimum_bond: int,
                  period: int,
-                 preps: List[PRep],
                  revision: int,
                  reward_fund: RewardFund,
                  sequence: int,
@@ -32,7 +32,6 @@ class Term:
         self.main_prep_count = main_prep_count
         self.minimum_bond = minimum_bond
         self.period = period
-        self.preps = preps
         self.revision = revision
         self.reward_fund = reward_fund
         self.sequence = sequence
@@ -45,7 +44,7 @@ class Term:
         return (f"Term('block_height': '{self.block_height}', 'bond_requirement': {self.bond_requirement}, "
                 f"'end_block_height': {self.end_block_height}, 'iiss_version': {self.iiss_version}), "
                 f"'is_decentralized': {self.is_decentralized}, 'main_prep_count': {self.main_prep_count}), "
-                f"'minimum_bond': {self.minimum_bond}, 'preiod': {self.period}), 'preps': {self.preps}, "
+                f"'minimum_bond': {self.minimum_bond}, 'preiod': {self.period}), "
                 f"'revision': {self.revision}, 'reward_fund': {self.reward_fund}), 'sequence': {self.sequence}, "
                 f"'start_block_height': {self.start_block_height}, 'total_delegated': {self.total_delegated}), "
                 f"'total_power': {self.total_power}, 'total_supply': {self.total_supply})"
@@ -56,7 +55,7 @@ class Term:
         return f"Term('sequence': {self.sequence}', start_height: {self.start_block_height}, 'end_block_height': {self.end_block_height})"
 
     def is_prep(self, address: str):
-        return address in [str(p.address) for p in self.preps]
+        return address in self.preps
 
     @staticmethod
     def from_dict(values: dict):
@@ -73,7 +72,6 @@ class Term:
             main_prep_count=int(values["mainPRepCount"], 16),
             minimum_bond=int(values.get("minimumBond", "0x0"), 16),
             period=int(values["period"], 16),
-            preps=[PRep.from_dict(x) for x in values["preps"]],
             revision=int(values["revision"], 16),
             reward_fund=RewardFund.from_dict(values["rewardFund"]),
             sequence=int(values["sequence"], 16),

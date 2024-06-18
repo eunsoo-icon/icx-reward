@@ -129,7 +129,7 @@ class PRep:
         return diff
 
     @staticmethod
-    def from_get_prep(prep: dict) -> PRep:
+    def from_dict(prep: dict) -> PRep:
         return PRep(
             enable=not JailInfo.from_dict(prep).in_jail(),
             address=prep["address"],
@@ -376,18 +376,15 @@ class PRepReward:
 
     @staticmethod
     def from_network(uri: str, height: int) -> PRepReward:
-        return PRepReward.from_term(uri, RPC(uri).term(height))
-
-    @staticmethod
-    def from_term(uri: str, term: dict) -> PRepReward:
-        t = Term.from_dict(term)
+        rpc = RPC(uri)
+        t = Term.from_dict(rpc.term(height))
         if t.start_block_height != t.block_height:
             raise InvalidParamsException(f"term must be value at term start height")
 
         preps: Dict[str, PRep] = {}
-        for p in term["preps"]:
-            prep = PRep.from_get_prep(p)
-            preps[prep.address] = prep
+        for p in rpc.get_main_sub_preps(t.start_block_height):
+            addr = p["address"]
+            preps[addr] = PRep.from_dict(rpc.get_prep(address=addr, height=height))
 
         return PRepReward(
             uri=uri,

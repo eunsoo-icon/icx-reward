@@ -32,7 +32,7 @@ class RPCBase:
                  wallet: KeyWallet,
                  to_: str,
                  value: int,
-             ):
+                 ):
         tx = TransactionBuilder().from_(wallet.get_address()) \
             .to(to_) \
             .step_limit(1000000) \
@@ -131,6 +131,18 @@ class RPC(RPCBase):
             return PRep.from_dict(resp)
         else:
             return resp
+
+    def get_preps(self, height: int = None) -> dict:
+        return self.call(
+            to=SYSTEM_ADDRESS,
+            method="getPReps",
+            height=height,
+        )
+
+    def get_main_sub_preps(self, height: int = None) -> list:
+        main_preps = self.call(to=SYSTEM_ADDRESS, method="getMainPReps", height=height)
+        sub_preps = self.call(to=SYSTEM_ADDRESS, method="getSubPReps", height=height)
+        return main_preps["preps"] + sub_preps["preps"]
 
     def set_stake(self, wallet: KeyWallet, amount: int):
         return self.invoke(

@@ -70,7 +70,7 @@ def wage(args: dict, _height: int, term_: dict):
     rpc = RPC(args["uri"])
     t = Term.from_dict(rpc.term(height=int(term_["startBlockHeight"], 16)))
     total = t.reward_fund.amount_by_key(RewardFund.IWAGE)
-    count = len(t.preps)
+    count = len(rpc.get_main_sub_preps(t.start_block_height))
     amount = total // count
     krw = args["krw"]
     tab = PrettyTable()
@@ -245,21 +245,19 @@ def estimate(args: dict, _height: int, term_: dict):
 
 @time_info
 def apy(args: dict, _height: int, term_: dict):
+    rpc = RPC(args["uri"])
     uri = args["uri"]
     count = args["count"]
-    t = Term.from_dict(term_)
-
-    rpc = RPC(uri)
+    t = Term.from_dict(rpc.term(height=int(term_["startBlockHeight"], 16)))
     network_info = rpc.get_network_info(t.start_block_height)
-    start_term = Term.from_dict(rpc.term(height=t.start_block_height))
-    rf: RewardFund = start_term.reward_fund
+    rf: RewardFund = t.reward_fund
     if "rewardFund2" in network_info:
         rf = RewardFund.from_dict(network_info["rewardFund2"])
 
     preps = []
     total_power = 0
-    for p in start_term.preps:
-        prep = rpc.get_prep(p.address, to_obj=True)
+    for p in rpc.get_main_sub_preps(t.start_block_height):
+        prep = rpc.get_prep(p["address"], to_obj=True)
         preps.append(prep)
         total_power += prep.power
 
@@ -267,7 +265,7 @@ def apy(args: dict, _height: int, term_: dict):
         prep.calculate_apy(
             total_reward_for_preps=rf.amount_by_key(RewardFund.IPREP),
             total_power=total_power,
-            br=start_term.bond_requirement,
+            br=t.bond_requirement,
         )
 
     apy_list = sorted(preps, key=lambda p: p.apy_sort_key(), reverse=True)
